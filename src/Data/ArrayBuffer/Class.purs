@@ -5,6 +5,10 @@ module Data.ArrayBuffer.Class
   , encodeArrayBuffer
   , decodeArrayBuffer
   , module Data.ArrayBuffer.Class.Types
+  , class GEncodeArrayBuffer
+  , gPutArrayBuffer
+  , class GDecodeArrayBuffer
+  , gReadArrayBuffer
   ) where
 
 import Data.ArrayBuffer.Class.Types
@@ -43,7 +47,12 @@ import Data.String (toCodePointArray, fromCodePointArray)
 import Data.String.CodePoints (CodePoint, codePointFromChar, singleton)
 import Data.String.CodeUnits (toChar)
 import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
-import Foreign.Object (Object, toAscUnfoldable, fromFoldable) as O
+import Data.Symbol (class IsSymbol, SProxy (..), reflectSymbol)
+import Foreign.Object (Object, toAscUnfoldable, fromFoldable, lookup, insert, empty) as O
+import Prim.Row (class Cons, class Lacks)
+import Prim.RowList (kind RowList, Cons, Nil) as RL
+import Record (insert, get) as Record
+import Type.Data.RowList (RLProxy (..))
 import Effect (Effect)
 import Effect.Exception (throw)
 import Effect.Ref (new, read, write) as Ref
@@ -578,10 +587,10 @@ instance decodeArrayBufferHashMap :: (Hashable k, DecodeArrayBuffer k, DecodeArr
   readArrayBuffer b o = (map HM.fromArray) <$> readArrayBuffer b o
 
 
-
+-- TODO ArrayBuffer, DataView, ArrayView
 -- TODO RowToList for Rows
 -- TODO generics
--- unordered containers
+-- TODO Vec? Sized in advance?
 
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes
@@ -601,3 +610,52 @@ encodeArrayBuffer x = do
 -- | Attempt to parse a value from an `ArrayBuffer`, starting at the first index.
 decodeArrayBuffer :: forall a. DecodeArrayBuffer a => ArrayBuffer -> Effect (Maybe a)
 decodeArrayBuffer b = readArrayBuffer b 0
+
+
+class GEncodeArrayBuffer (row :: # Type) (list :: RL.RowList) where
+  gPutArrayBuffer :: Record row -> RLProxy list -> Effect (O.Object ArrayBuffer)
+
+instance gEncodeArrayBufferNil :: GEncodeArrayBuffer row RL.Nil where
+  gPutArrayBuffer _ _ = pure O.empty
+
+instance gEncodeArrayBufferCons ::
+  ( EncodeArrayBuffer value
+  , GEncodeArrayBuffer row tail
+  , IsSymbol field
+  , Cons field value tail' row
+  ) => GEncodeArrayBuffer row (RL.Cons field value tail) where
+  gPutArrayBuffer row _ = do
+    let sProxy :: SProxy field
+        sProxy = SProxy
+        value :: value
+        value = Record.get sProxy row
+    x <- encodeArrayBuffer value
+    rest <- gPutArrayBuffer row (RLProxy :: RLProxy tail)
+    pure (O.insert (reflectSymbol sProxy) x rest)
+
+
+class GDecodeArrayBuffer (row :: # Type) (list :: RL.RowList) | list -> row where
+  gReadArrayBuffer :: O.Object ArrayBuffer -> RLProxy list -> Effect (Record row)
+
+instance gDecodeArrayBufferNil :: GDecodeArrayBuffer () RL.Nil where
+  gReadArrayBuffer _ _ = pure {}
+
+instance gDecodeArrayBufferCons ::
+  ( DecodeArrayBuffer value
+  , GDecodeArrayBuffer rowTail tail
+  , IsSymbol field
+  , Cons field value rowTail row
+  , Lacks field rowTail
+  ) => GDecodeArrayBuffer row (RL.Cons field value tail) where
+  gReadArrayBuffer object _ = do
+    let sProxy :: SProxy field
+        sProxy = SProxy
+        fieldName = reflectSymbol sProxy
+    rest <- gReadArrayBuffer object (RLProxy :: RLProxy tail)
+    case O.lookup fieldName object of
+      Nothing -> throw ("Record was missing expected field: " <> fieldName)
+      Just b -> do
+        mVal <- decodeArrayBuffer b
+        case mVal of
+          Nothing -> throw ("Couldn't decode arraybuffer stored in object: " <> fieldName)
+          Just val -> pure (Record.insert sProxy val rest)
