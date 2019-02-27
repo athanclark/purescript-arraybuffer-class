@@ -22,6 +22,12 @@ import Data.Tuple (Tuple (..))
 import Data.List (List (..))
 import Data.Void (Void)
 import Data.NonEmpty (NonEmpty (..))
+import Data.Monoid.Additive (Additive (..))
+import Data.Monoid.Multiplicative (Multiplicative (..))
+import Data.Monoid.Conj (Conj (..))
+import Data.Monoid.Disj (Disj (..))
+import Data.Monoid.Dual (Dual (..))
+import Data.Monoid.Endo (Endo (..))
 import Data.Array (fromFoldable, toUnfoldable, cons, uncons) as Array
 import Data.Enum (toEnum, fromEnum)
 import Data.Traversable (for_, traverse)
@@ -104,6 +110,18 @@ instance dynamicByteLengthNonEmptyArray :: DynamicByteLength a => DynamicByteLen
   byteLength (NonEmpty x xs) = byteLength (Array.cons x xs)
 instance dynamicByteLengthNonEmptyList :: DynamicByteLength a => DynamicByteLength (NonEmpty List a) where
   byteLength (NonEmpty x xs) = byteLength (Cons x xs)
+instance dynamicByteLengthAdditive :: DynamicByteLength a => DynamicByteLength (Additive a) where
+  byteLength (Additive x) = byteLength x
+instance dynamicByteLengthMultiplicative :: DynamicByteLength a => DynamicByteLength (Multiplicative a) where
+  byteLength (Multiplicative x) = byteLength x
+instance dynamicByteLengthEndo :: DynamicByteLength (c a a) => DynamicByteLength (Endo c a) where
+  byteLength (Endo x) = byteLength x
+instance dynamicByteLengthDual :: DynamicByteLength a => DynamicByteLength (Dual a) where
+  byteLength (Dual x) = byteLength x
+instance dynamicByteLengthDisj :: DynamicByteLength a => DynamicByteLength (Disj a) where
+  byteLength (Disj x) = byteLength x
+instance dynamicByteLengthConj :: DynamicByteLength a => DynamicByteLength (Conj a) where
+  byteLength (Conj x) = byteLength x
 
 
 
@@ -329,6 +347,34 @@ instance decodeArrayBufferChar :: DecodeArrayBuffer Char where
             Nothing -> throw ("Code Point not capable of being a char: " <> show c)
             Just c' -> pure (Just c')
     in  readArrayBuffer b o >>= codePointToChar
+
+-- Monoid newtypes
+
+instance encodeArrayBufferAdditive :: EncodeArrayBuffer a => EncodeArrayBuffer (Additive a) where
+  putArrayBuffer b o (Additive x) = putArrayBuffer b o x
+instance decodeArrayBufferAdditive :: DecodeArrayBuffer a => DecodeArrayBuffer (Additive a) where
+  readArrayBuffer b o = (map Additive) <$> readArrayBuffer b o
+instance encodeArrayBufferMultiplicative :: EncodeArrayBuffer a => EncodeArrayBuffer (Multiplicative a) where
+  putArrayBuffer b o (Multiplicative x) = putArrayBuffer b o x
+instance decodeArrayBufferMultiplicative :: DecodeArrayBuffer a => DecodeArrayBuffer (Multiplicative a) where
+  readArrayBuffer b o = (map Multiplicative) <$> readArrayBuffer b o
+instance encodeArrayBufferConj :: EncodeArrayBuffer a => EncodeArrayBuffer (Conj a) where
+  putArrayBuffer b o (Conj x) = putArrayBuffer b o x
+instance decodeArrayBufferConj :: DecodeArrayBuffer a => DecodeArrayBuffer (Conj a) where
+  readArrayBuffer b o = (map Conj) <$> readArrayBuffer b o
+instance encodeArrayBufferDisj :: EncodeArrayBuffer a => EncodeArrayBuffer (Disj a) where
+  putArrayBuffer b o (Disj x) = putArrayBuffer b o x
+instance decodeArrayBufferDisj :: DecodeArrayBuffer a => DecodeArrayBuffer (Disj a) where
+  readArrayBuffer b o = (map Disj) <$> readArrayBuffer b o
+instance encodeArrayBufferDual :: EncodeArrayBuffer a => EncodeArrayBuffer (Dual a) where
+  putArrayBuffer b o (Dual x) = putArrayBuffer b o x
+instance decodeArrayBufferDual :: DecodeArrayBuffer a => DecodeArrayBuffer (Dual a) where
+  readArrayBuffer b o = (map Dual) <$> readArrayBuffer b o
+instance encodeArrayBufferEndo :: EncodeArrayBuffer (c a a) => EncodeArrayBuffer (Endo c a) where
+  putArrayBuffer b o (Endo x) = putArrayBuffer b o x
+instance decodeArrayBufferEndo :: DecodeArrayBuffer (c a a) => DecodeArrayBuffer (Endo c a) where
+  readArrayBuffer b o = (map Endo) <$> readArrayBuffer b o
+
 
 
 -- Trivial containers
