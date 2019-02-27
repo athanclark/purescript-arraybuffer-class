@@ -3,6 +3,7 @@ module Data.ArrayBuffer.Class
   , class DecodeArrayBuffer, readArrayBuffer
   , class DynamicByteLength, byteLength
   , encodeArrayBuffer
+  , decodeArrayBuffer
   , module Data.ArrayBuffer.Class.Types
   ) where
 
@@ -12,7 +13,7 @@ import Data.ArrayBuffer.ArrayBuffer (empty) as AB
 import Data.ArrayBuffer.DataView as DV
 
 import Prelude
-  ((<$>), (>>=), (<<<), pure, Unit, Ordering (..), (<=), otherwise, (<>), show, unit, bind, (+), (/=))
+  ((<$>), (>>=), (<<<), pure, Unit, Ordering (..), (<=), otherwise, (<>), show, unit, bind, (+), (/=), map)
 import Data.Maybe (Maybe (..))
 import Data.UInt (fromInt) as UInt
 import Data.Char (toCharCode)
@@ -22,7 +23,7 @@ import Effect.Exception (throw)
 
 
 class DynamicByteLength a where
-  -- | Get the byte length of a value at runtime.
+  -- | Get the byte length of a value at runtime. Should be identical for read and written values.
   byteLength :: a -> Effect ByteLength
 
 instance dynamicByteLengthUint32BE :: DynamicByteLength Uint32BE where
@@ -69,19 +70,20 @@ instance dynamicByteLengthChar :: DynamicByteLength Char where
 
 
 class DynamicByteLength a <= EncodeArrayBuffer a where
-  -- | Returns the byte length of the stored value, if successful. This function should
+  -- | Returns the bytes written indicating _partial_ success - for exact success, the written
+  -- | bytes should equal the value's dynamic `byteLength`. This function should
   -- | strictly write to the `ArrayBuffer`, and shouldn't attempt to read it.
   putArrayBuffer :: ArrayBuffer -- ^ Storage medium
                  -> ByteOffset -- ^ Position to store
                  -> a -- ^ Value to store
-                 -> Effect (Maybe {written :: ByteLength})
+                 -> Effect (Maybe ByteLength)
 
 class DynamicByteLength a <= DecodeArrayBuffer a where
-  -- | Returns the value parsed, and the byte length of the parsed string, if successful.
+  -- | Returns the value parsed if successful.
   -- | This function should strictly read the `ArrayBuffer`, and shouldn't attempt to write to it.
   readArrayBuffer :: ArrayBuffer -- ^ Storage medium
                   -> ByteOffset -- ^ Position to read from
-                  -> Effect (Maybe {value :: a, consumed :: ByteLength})
+                  -> Effect (Maybe a)
 
 -- Numeric instances
 
@@ -114,10 +116,21 @@ instance encodeArrayBufferFloat64BE :: EncodeArrayBuffer Float64BE where
 instance encodeArrayBufferFloat64LE :: EncodeArrayBuffer Float64LE where
   putArrayBuffer b o a@(Float64LE x) = DV.setFloat64le (DV.whole b) o x >>= guardByteLength a
 
+guardByteLength :: forall a. DynamicByteLength a => a -> Boolean -> Effect (Maybe ByteLength)
+guardByteLength x success =
+  if success
+    then Just <$> byteLength x
+    else pure Nothing
+
+
+instance decodeArrayBufferUint32BE :: DecodeArrayBuffer Uint32BE where
+  readArrayBuffer b o = (map Uint32BE) <$> DV.getUint32be (DV.whole b) o
+
+
 -- * Casual instances
 
 instance encodeArrayBufferUnit :: EncodeArrayBuffer Unit where
-  putArrayBuffer b o _ = pure (Just {written: 0})
+  putArrayBuffer b o _ = pure (Just 0)
 -- | Encodes the boolean into an unsigned word8
 instance encodeArrayBufferBoolean :: EncodeArrayBuffer Boolean where
   putArrayBuffer b o x =
@@ -144,56 +157,51 @@ instance encodeArrayBufferChar :: EncodeArrayBuffer Char where
               mW <- putArrayBuffer b o (mkVal (0xc0 .|. y))
               case mW of
                 Nothing -> pure Nothing
-                Just {written} -> do
+                Just written -> do
                   mW' <- putArrayBuffer b (o + written) (mkVal (0x80 .|. z))
                   case mW' of
-                    Nothing -> pure (Just {written})
-                    Just {written: written'} -> pure (Just {written: written + written'})
+                    Nothing -> pure (Just written)
+                    Just written' -> pure (Just (written + written'))
             | v <= 0xffff -> do
               mW <- putArrayBuffer b o (mkVal (0xe0 .|. x))
               case mW of
                 Nothing -> pure Nothing
-                Just {written} -> do
+                Just written -> do
                   mW' <- putArrayBuffer b (o + written) (mkVal (0x80 .|. y))
                   case mW' of
-                    Nothing -> pure (Just {written})
-                    Just {written: written'} -> do
+                    Nothing -> pure (Just written)
+                    Just written' -> do
                       mW'' <- putArrayBuffer b (o + written + written') (mkVal (0x80 .|. z))
                       case mW'' of
-                        Nothing -> pure (Just {written: written + written'})
-                        Just {written: written''} -> pure (Just {written: written + written' + written''})
+                        Nothing -> pure (Just (written + written'))
+                        Just written'' -> pure (Just (written + written' + written''))
             | v <= 0x10ffff -> do
               mW <- putArrayBuffer b o (mkVal (0xf0 .|. w))
               case mW of
                 Nothing -> pure Nothing
-                Just {written} -> do
+                Just written -> do
                   let o' = o + written
                   mW' <- putArrayBuffer b o' (mkVal (0x80 .|. x))
                   case mW' of
-                    Nothing -> pure (Just {written})
-                    Just {written: written'} -> do
+                    Nothing -> pure (Just written)
+                    Just written' -> do
                       let o'' = o' + written'
                       mW'' <- putArrayBuffer b o'' (mkVal (0x80 .|. y))
                       case mW'' of
-                        Nothing -> pure (Just {written: written + written'})
-                        Just {written: written''} -> do
+                        Nothing -> pure (Just (written + written'))
+                        Just written'' -> do
                           let o''' = o'' + written''
                           mW''' <- putArrayBuffer b o''' (mkVal (0x80 .|. z))
                           case mW''' of
-                            Nothing -> pure (Just {written: written + written' + written''})
-                            Just {written: written'''} ->
-                              pure (Just {written: written + written' + written'' + written'''})
+                            Nothing -> pure (Just (written + written' + written''))
+                            Just written''' ->
+                              pure (Just (written + written' + written'' + written'''))
             | otherwise -> throw ("Char not in unicode range: " <> show c)
 
 
-guardByteLength :: forall a. DynamicByteLength a => a -> Boolean -> Effect (Maybe {written :: ByteLength})
-guardByteLength x success =
-  if success
-    then (\written -> Just {written}) <$> byteLength x
-    else pure Nothing
 
-
--- | Generate a new `ArrayBuffer` from a value.
+-- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes
+-- | do not equal the dynamic `byteLength` of the value.
 encodeArrayBuffer :: forall a. EncodeArrayBuffer a => a -> Effect ArrayBuffer
 encodeArrayBuffer x = do
   l <- byteLength x
@@ -201,6 +209,11 @@ encodeArrayBuffer x = do
   mW <- putArrayBuffer b 0 x
   case mW of
     Nothing -> throw "Couldn't serialize to ArrayBuffer"
-    Just {written}
-      | written /= l -> throw ("Written bytes and dynamic byte length are not identical - written: " <> show written <> ", byte length: " <> show l)
+    Just w
+      | w /= l -> throw ("Written bytes and dynamic byte length are not identical - written: " <> show w <> ", byte length: " <> show l)
       | otherwise -> pure b
+
+
+-- | Attempt to parse a value from an `ArrayBuffer`, starting at the first index.
+decodeArrayBuffer :: forall a. DecodeArrayBuffer a => ArrayBuffer -> Effect (Maybe a)
+decodeArrayBuffer b = readArrayBuffer b 0
