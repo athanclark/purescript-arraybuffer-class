@@ -12,6 +12,8 @@ import Data.List (List)
 import Data.NonEmpty (NonEmpty)
 import Data.Set (Set, fromFoldable) as Set
 import Data.Map (Map, fromFoldable) as Map
+import Data.HashSet (HashSet, fromFoldable) as HS
+import Data.HashMap (HashMap, fromArray) as HM
 import Foreign.Object (Object, fromFoldable) as O
 import Effect (Effect)
 import Effect.Console (log)
@@ -86,6 +88,10 @@ main = do
   quickCheckGen' 1000 (arrayBufferIso <$> genSet)
   log "  Map"
   quickCheckGen' 1000 (arrayBufferIso <$> genMap)
+  log "  HashSet"
+  quickCheckGen' 1000 (arrayBufferIso <$> genHashSet)
+  log "  HashMap"
+  quickCheckGen' 1000 (arrayBufferIso <$> genHashMap)
 
 
 
@@ -103,6 +109,16 @@ genMap :: Gen (Map.Map String String)
 genMap = do
   (xs :: Array (Tuple String String)) <- arbitrary
   pure (Map.fromFoldable xs)
+
+genHashSet :: Gen (HS.HashSet String)
+genHashSet = do
+  (xs :: Array String) <- arbitrary
+  pure (HS.fromFoldable xs)
+
+genHashMap :: Gen (HM.HashMap String String)
+genHashMap = do
+  (xs :: Array (Tuple String String)) <- arbitrary
+  pure (HM.fromArray xs)
 
 
 arrayBufferIso :: forall a. Show a => Eq a => EncodeArrayBuffer a => DecodeArrayBuffer a => a -> Result

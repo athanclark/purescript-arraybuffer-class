@@ -30,6 +30,9 @@ import Data.Monoid.Dual (Dual (..))
 import Data.Monoid.Endo (Endo (..))
 import Data.Set (Set, fromFoldable, toUnfoldable) as Set
 import Data.Map (Map, fromFoldable, toUnfoldable) as Map
+import Data.Hashable (class Hashable)
+import Data.HashSet (HashSet, fromFoldable, toArray) as HS
+import Data.HashMap (HashMap, toArrayBy, fromArray) as HM
 import Data.Array (fromFoldable, toUnfoldable, cons, uncons) as Array
 import Data.Enum (toEnum, fromEnum)
 import Data.Traversable (for_, traverse)
@@ -134,6 +137,10 @@ instance dynamicByteLengthSet :: DynamicByteLength a => DynamicByteLength (Set.S
   byteLength xs = byteLength (Set.toUnfoldable xs :: Array a)
 instance dynamicByteLengthMap :: (DynamicByteLength a, DynamicByteLength k) => DynamicByteLength (Map.Map k a) where
   byteLength xs = byteLength (Map.toUnfoldable xs :: Array (Tuple k a))
+instance dynamicByteLengthHashSet :: DynamicByteLength a => DynamicByteLength (HS.HashSet a) where
+  byteLength xs = byteLength (HS.toArray xs)
+instance dynamicByteLengthHashMap :: (DynamicByteLength k, DynamicByteLength a) => DynamicByteLength (HM.HashMap k a) where
+  byteLength xs = byteLength (HM.toArrayBy Tuple xs)
 
 
 
@@ -361,7 +368,8 @@ instance decodeArrayBufferChar :: DecodeArrayBuffer Char where
             Just c' -> pure (Just c')
     in  readArrayBuffer b o >>= codePointToChar
 
--- Strings FIXME is exactly utf8 encoded?
+-- Strings FIXME is exactly utf8 encoded? Composite types would have to include their byte length
+-- for every sub-field if that were the case...
 
 instance encodeArrayBufferString :: EncodeArrayBuffer String where
   putArrayBuffer b o xs = putArrayBuffer b o (toCodePointArray xs)
@@ -560,12 +568,20 @@ instance encodeArrayBufferMap :: (EncodeArrayBuffer a, EncodeArrayBuffer k) => E
   putArrayBuffer b o xs = putArrayBuffer b o (Map.toUnfoldable xs :: Array (Tuple k a))
 instance decodeArrayBufferMap :: (Ord k, DecodeArrayBuffer k, DecodeArrayBuffer a) => DecodeArrayBuffer (Map.Map k a) where
   readArrayBuffer b o = (map (Map.fromFoldable :: Array (Tuple k a) -> Map.Map k a)) <$> readArrayBuffer b o
+instance encodeArrayBufferHashSet :: EncodeArrayBuffer a => EncodeArrayBuffer (HS.HashSet a) where
+  putArrayBuffer b o xs = putArrayBuffer b o (HS.toArray xs)
+instance decodeArrayBufferHashSet :: (Hashable a, DecodeArrayBuffer a) => DecodeArrayBuffer (HS.HashSet a) where
+  readArrayBuffer b o = (map (HS.fromFoldable :: Array a -> HS.HashSet a)) <$> readArrayBuffer b o
+instance encodeArrayBufferHashMap :: (EncodeArrayBuffer k, EncodeArrayBuffer a) => EncodeArrayBuffer (HM.HashMap k a) where
+  putArrayBuffer b o xs = putArrayBuffer b o (HM.toArrayBy Tuple xs)
+instance decodeArrayBufferHashMap :: (Hashable k, DecodeArrayBuffer k, DecodeArrayBuffer a) => DecodeArrayBuffer (HM.HashMap k a) where
+  readArrayBuffer b o = (map HM.fromArray) <$> readArrayBuffer b o
 
 
 
 -- TODO RowToList for Rows
 -- TODO generics
--- ordered containers, unordered containers
+-- unordered containers
 
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes
