@@ -57,6 +57,8 @@ main = do
   quickCheck (arrayBufferIso :: Ordering -> Result)
   log "  Char"
   quickCheck' 1000 (arrayBufferIso :: Char -> Result)
+  log "  String"
+  quickCheck' 1000 (arrayBufferIso :: String -> Result)
 
   log "  Maybe"
   quickCheck (arrayBufferIso :: Maybe Char -> Result)

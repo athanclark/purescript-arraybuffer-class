@@ -34,9 +34,11 @@ import Data.Traversable (for_, traverse)
 import Data.Foldable (sum, length)
 import Data.Unfoldable (replicateA)
 import Data.UInt (fromInt, toInt, fromNumber, toNumber) as UInt
+import Data.String (toCodePointArray, fromCodePointArray)
 import Data.String.CodePoints (CodePoint, codePointFromChar, singleton)
 import Data.String.CodeUnits (toChar)
 import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
+import Foreign.Object (Object, toAscUnfoldable, fromFoldable) as O
 import Effect (Effect)
 import Effect.Exception (throw)
 import Effect.Ref (new, read, write) as Ref
@@ -92,6 +94,8 @@ instance dynamicByteLengthCodePoint :: DynamicByteLength CodePoint where
       | otherwise -> throw ("CodePoint not in unicode range: " <> show c)
 instance dynamicByteLengthChar :: DynamicByteLength Char where
   byteLength c = byteLength (codePointFromChar c)
+instance dynamicByteLengthString :: DynamicByteLength String where
+  byteLength xs = byteLength (toCodePointArray xs)
 instance dynamicByteLengthMaybe :: DynamicByteLength a => DynamicByteLength (Maybe a) where
   byteLength mX = case mX of
     Nothing -> pure 1
@@ -348,6 +352,15 @@ instance decodeArrayBufferChar :: DecodeArrayBuffer Char where
             Just c' -> pure (Just c')
     in  readArrayBuffer b o >>= codePointToChar
 
+-- Strings FIXME is exactly utf8 encoded?
+
+instance encodeArrayBufferString :: EncodeArrayBuffer String where
+  putArrayBuffer b o xs = putArrayBuffer b o (toCodePointArray xs)
+instance decodeArrayBufferString :: DecodeArrayBuffer String where
+  readArrayBuffer b o = (map fromCodePointArray) <$> readArrayBuffer b o
+
+
+
 -- Monoid newtypes
 
 instance encodeArrayBufferAdditive :: EncodeArrayBuffer a => EncodeArrayBuffer (Additive a) where
@@ -524,12 +537,16 @@ instance decodeArrayBufferNonEmptyList :: DecodeArrayBuffer a => DecodeArrayBuff
         Nil -> throw ("Incorrect NonEmpty List encoding - list is empty")
         Cons head tail -> pure (Just (NonEmpty head tail))
 
+-- Larger containers
+
+-- instance encodeArrayBufferObject :: EncodeArray
+
+
 -- TODO String
 -- TODO RowToList for Rows
 -- TODO generics
 -- ordered containers, unordered containers
 -- object
--- monoid newtypes
 
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes

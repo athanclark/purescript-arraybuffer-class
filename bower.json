@@ -11,7 +11,8 @@
     "purescript-effect": "^2.0.1",
     "purescript-arraybuffer": "^10.0.0",
     "purescript-exceptions": "^4.0.0",
-    "purescript-strings": "^4.0.1"
+    "purescript-strings": "^4.0.1",
+    "purescript-foreign-object": "^1.1.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",
