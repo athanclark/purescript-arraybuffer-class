@@ -14,7 +14,7 @@ import Data.ArrayBuffer.DataView as DV
 
 import Prelude
   ( Unit, Ordering (..)
-  , (<$>), (<*>), (>>=), (<<<), (<=), (<>), (+), (/=), (==), (<)
+  , (<$>), (<*>), (>>=), (<<<), (<=), (<>), (+), (-), (/=), (==), (<)
   , pure, otherwise, show, unit, bind, map, discard)
 import Data.Maybe (Maybe (..))
 import Data.Either (Either (..))
@@ -41,6 +41,7 @@ import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
 import Foreign.Object (Object, toAscUnfoldable, fromFoldable) as O
 import Effect (Effect)
 import Effect.Exception (throw)
+import Effect.Console (warn)
 import Effect.Ref (new, read, write) as Ref
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -99,13 +100,13 @@ instance dynamicByteLengthString :: DynamicByteLength String where
 instance dynamicByteLengthMaybe :: DynamicByteLength a => DynamicByteLength (Maybe a) where
   byteLength mX = case mX of
     Nothing -> pure 1
-    Just x -> (_ + 1) <$> byteLength x
+    Just x -> (\y -> y + 1) <$> byteLength x
 instance dynamicByteLengthTuple :: (DynamicByteLength a, DynamicByteLength b) => DynamicByteLength (Tuple a b) where
   byteLength (Tuple x y) = (+) <$> byteLength x <*> byteLength y
 instance dynamicByteLengthEither :: (DynamicByteLength a, DynamicByteLength b) => DynamicByteLength (Either a b) where
-  byteLength eXY = case eXY of
-    Left x -> (_ + 1) <$> byteLength x
-    Right y -> (_ + 1) <$> byteLength y
+  byteLength eXY = (_ + 1) <$> case eXY of
+    Left x -> byteLength x
+    Right y -> byteLength y
 instance dynamicByteLengthArray :: DynamicByteLength a => DynamicByteLength (Array a) where
   byteLength xs = (\ys -> sum ys + 4) <$> traverse byteLength xs
 instance dynamicByteLengthList :: DynamicByteLength a => DynamicByteLength (List a) where
@@ -401,11 +402,13 @@ instance encodeArrayBufferMaybe :: EncodeArrayBuffer a => EncodeArrayBuffer (May
       mW <- putArrayBuffer b o (Uint8 (UInt.fromInt 1))
       case mW of
         Nothing -> pure Nothing
-        Just _ -> do
-          mW' <- putArrayBuffer b (o + 1) x
+        Just w -> do
+          mW' <- putArrayBuffer b (o + w) x
           case mW' of
-            Nothing -> pure (Just 1) -- FIXME warn?
-            Just w' -> pure (Just (w' + 1))
+            Nothing -> pure (Just w) -- FIXME warn?
+            Just w' -> do
+              warn ("Maybe's Just written bytes: " <> show w <> ", body's written bytes: " <> show w')
+              pure (Just (w' + w))
 instance decodeArrayBufferMaybe :: DecodeArrayBuffer a => DecodeArrayBuffer (Maybe a) where
   readArrayBuffer b o = do
     mX <- readArrayBuffer b o
@@ -496,8 +499,8 @@ instance encodeArrayBufferArray :: EncodeArrayBuffer a => EncodeArrayBuffer (Arr
           case mW' of
             Nothing -> throw ("Incorrect ArrayBuffer length - wrote array length and possible bytes: " <> show o')
             Just w' -> Ref.write (o' + w') nextORef
-        w'' <- Ref.read nextORef
-        pure (Just w'')
+        withOffset <- Ref.read nextORef
+        pure (Just (withOffset - o))
 instance decodeArrayBufferArray :: DecodeArrayBuffer a => DecodeArrayBuffer (Array a) where
   readArrayBuffer b o = do
     mL <- readArrayBuffer b o
@@ -564,7 +567,9 @@ encodeArrayBuffer x = do
   case mW of
     Nothing -> throw "Couldn't serialize to ArrayBuffer"
     Just w
-      | w /= l -> throw ("Written bytes and dynamic byte length are not identical - written: " <> show w <> ", byte length: " <> show l)
+      | w /= l -> do
+        warn (unsafeCoerce x)
+        throw ("Written bytes and dynamic byte length are not identical - written: " <> show w <> ", byte length: " <> show l)
       | otherwise -> pure b
 
 
