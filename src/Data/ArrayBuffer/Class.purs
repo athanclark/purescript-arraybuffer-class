@@ -15,15 +15,20 @@ import Data.ArrayBuffer.DataView as DV
 import Prelude
   ( Unit, Ordering (..)
   , (<$>), (<*>), (>>=), (<<<), (<=), (<>), (+), (/=), (==), (<)
-  , pure, otherwise, show, unit, bind, map)
+  , pure, otherwise, show, unit, bind, map, discard)
 import Data.Maybe (Maybe (..))
 import Data.Either (Either (..))
 import Data.Tuple (Tuple (..))
-import Data.UInt (fromInt, toInt) as UInt
+import Data.Array (length) as Array
+import Data.Traversable (for_, traverse)
+import Data.Foldable (sum)
+import Data.UInt (fromInt, toInt, fromNumber) as UInt
 import Data.Char (toCharCode, fromCharCode)
 import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
 import Effect (Effect)
 import Effect.Exception (throw)
+import Effect.Ref (new, read, write) as Ref
+import Unsafe.Coerce (unsafeCoerce)
 
 
 class DynamicByteLength a where
@@ -81,6 +86,8 @@ instance dynamicByteLengthEither :: (DynamicByteLength a, DynamicByteLength b) =
   byteLength eXY = case eXY of
     Left x -> (_ + 1) <$> byteLength x
     Right y -> (_ + 1) <$> byteLength y
+instance dynamicByteLengthArray :: DynamicByteLength a => DynamicByteLength (Array a) where
+  byteLength xs = (\ys -> sum ys + 4) <$> traverse byteLength xs
 
 
 
@@ -383,6 +390,22 @@ instance decodeArrayBufferEither :: (DecodeArrayBuffer a, DecodeArrayBuffer b) =
                   Nothing -> throw "Incorrect Either encoding - got Right flag, but no data"
                   Just y -> pure (Just (Right y))
                 | otherwise -> throw ("Incorrect Either encoding - flag out of range: " <> show i')
+instance encodeArrayBufferArray :: EncodeArrayBuffer a => EncodeArrayBuffer (Array a) where
+  putArrayBuffer b o xs = do
+    let l = Array.length xs
+    mW <- putArrayBuffer b o (Uint32BE (UInt.fromNumber (unsafeCoerce l))) -- put array length as unsigned 32
+    case mW of
+      Nothing -> pure Nothing
+      Just w -> do
+        nextORef <- Ref.new (o + w)
+        for_ xs \x -> do
+          o' <- Ref.read nextORef
+          mW' <- putArrayBuffer b o' x -- put each (possibly variadic) entity
+          case mW' of
+            Nothing -> throw ("Incorrect ArrayBuffer length - wrote array length and possible bytes: " <> show o')
+            Just w' -> Ref.write (o' + w') nextORef
+        w'' <- Ref.read nextORef
+        pure (Just w'')
 
 
 
