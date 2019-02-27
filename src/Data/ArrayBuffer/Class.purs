@@ -14,9 +14,11 @@ import Data.ArrayBuffer.DataView as DV
 
 import Prelude
   ( Unit, Ordering (..)
-  , (<$>), (>>=), (<<<), (<=), (<>), (+), (/=), (==), (<)
+  , (<$>), (<*>), (>>=), (<<<), (<=), (<>), (+), (/=), (==), (<)
   , pure, otherwise, show, unit, bind, map)
 import Data.Maybe (Maybe (..))
+import Data.Either (Either (..))
+import Data.Tuple (Tuple (..))
 import Data.UInt (fromInt, toInt) as UInt
 import Data.Char (toCharCode, fromCharCode)
 import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
@@ -69,6 +71,17 @@ instance dynamicByteLengthChar :: DynamicByteLength Char where
       | v <= 0xffff -> pure 3
       | v <= 0x10ffff -> pure 4
       | otherwise -> throw ("Char not in unicode range: " <> show c)
+instance dynamicByteLengthMaybe :: DynamicByteLength a => DynamicByteLength (Maybe a) where
+  byteLength mX = case mX of
+    Nothing -> pure 1
+    Just x -> (_ + 1) <$> byteLength x
+instance dynamicByteLengthTuple :: (DynamicByteLength a, DynamicByteLength b) => DynamicByteLength (Tuple a b) where
+  byteLength (Tuple x y) = (+) <$> byteLength x <*> byteLength y
+instance dynamicByteLengthEither :: (DynamicByteLength a, DynamicByteLength b) => DynamicByteLength (Either a b) where
+  byteLength eXY = case eXY of
+    Left x -> (_ + 1) <$> byteLength x
+    Right y -> (_ + 1) <$> byteLength y
+
 
 
 class DynamicByteLength a <= EncodeArrayBuffer a where
@@ -279,6 +292,97 @@ instance decodeArrayBufferChar :: DecodeArrayBuffer Char where
         case fromCharCode r of -- FIXME sure this works for Ints, and shouldn't be UInts? It's up to 4 bytes...
           Nothing -> throw ("Incorrect unicode char encoding: " <> show r)
           Just c -> pure (Just c)
+
+
+-- Trivial containers
+
+instance encodeArrayBufferMaybe :: EncodeArrayBuffer a => EncodeArrayBuffer (Maybe a) where
+  putArrayBuffer b o mX = case mX of
+    Nothing -> putArrayBuffer b o (Uint8 (UInt.fromInt 0))
+    Just x -> do
+      mW <- putArrayBuffer b o (Uint8 (UInt.fromInt 1))
+      case mW of
+        Nothing -> pure Nothing
+        Just _ -> do
+          mW' <- putArrayBuffer b (o + 1) x
+          case mW' of
+            Nothing -> pure (Just 1) -- FIXME warn?
+            Just w' -> pure (Just (w' + 1))
+instance decodeArrayBufferMaybe :: DecodeArrayBuffer a => DecodeArrayBuffer (Maybe a) where
+  readArrayBuffer b o = do
+    mX <- readArrayBuffer b o
+    case mX of
+      Nothing -> pure Nothing
+      Just (Uint8 i) ->
+        let i' = UInt.toInt i
+        in  case unit of
+              _ | i' == 0 -> pure (Just Nothing)
+                | i' == 1 -> do
+                mX' <- readArrayBuffer b (o + 1)
+                case mX' of
+                  Nothing -> throw "Incorrect Maybe encoding - got Just flag, but no data"
+                  Just x -> pure (Just (Just x))
+                | otherwise -> throw ("Incorrect Maybe encoding - flag out of range: " <> show i')
+instance encodeArrayBufferTuple :: (EncodeArrayBuffer a, EncodeArrayBuffer b) => EncodeArrayBuffer (Tuple a b) where
+  putArrayBuffer b o (Tuple x y) = do
+    mW <- putArrayBuffer b o x
+    case mW of
+      Nothing -> pure Nothing
+      Just w -> do
+        mW' <- putArrayBuffer b (o + w) y
+        case mW' of
+          Nothing -> pure (Just w) -- FIXME warn?
+          Just w' -> pure (Just (w + w'))
+instance decodeArrayBufferTuple :: (DecodeArrayBuffer a, DecodeArrayBuffer b) => DecodeArrayBuffer (Tuple a b) where
+  readArrayBuffer b o = do
+    mX <- readArrayBuffer b o
+    case mX of
+      Nothing -> pure Nothing
+      Just x -> do
+        l <- byteLength x
+        mY <- readArrayBuffer b (o + l)
+        case mY of
+          Nothing -> throw "Incorrect Tuple encoding - got one value, but not the next"
+          Just y -> pure (Just (Tuple x y))
+instance encodeArrayBufferEither :: (EncodeArrayBuffer a, EncodeArrayBuffer b) => EncodeArrayBuffer (Either a b) where
+  putArrayBuffer b o eXY = case eXY of
+    Left x -> do
+      mW <- putArrayBuffer b o (Uint8 (UInt.fromInt 0))
+      case mW of
+        Nothing -> pure Nothing
+        Just _ -> do
+          mW' <- putArrayBuffer b (o + 1) x
+          case mW' of
+            Nothing -> pure (Just 1) -- FIXME warn?
+            Just w' -> pure (Just (w' + 1))
+    Right y -> do
+      mW <- putArrayBuffer b o (Uint8 (UInt.fromInt 1))
+      case mW of
+        Nothing -> pure Nothing
+        Just _ -> do
+          mW' <- putArrayBuffer b (o + 1) y
+          case mW' of
+            Nothing -> pure (Just 1) -- FIXME warn?
+            Just w' -> pure (Just (w' + 1))
+instance decodeArrayBufferEither :: (DecodeArrayBuffer a, DecodeArrayBuffer b) => DecodeArrayBuffer (Either a b) where
+  readArrayBuffer b o = do
+    mX <- readArrayBuffer b o
+    case mX of
+      Nothing -> pure Nothing
+      Just (Uint8 i) ->
+        let i' = UInt.toInt i
+        in  case unit of
+              _ | i' == 0 -> do
+                mX' <- readArrayBuffer b (o + 1)
+                case mX' of
+                  Nothing -> throw "Incorrect Either encoding - got Left flag, but no data"
+                  Just x -> pure (Just (Left x))
+                | i' == 1 -> do
+                mY' <- readArrayBuffer b (o + 1)
+                case mY' of
+                  Nothing -> throw "Incorrect Either encoding - got Right flag, but no data"
+                  Just y -> pure (Just (Right y))
+                | otherwise -> throw ("Incorrect Either encoding - flag out of range: " <> show i')
 
 
 
