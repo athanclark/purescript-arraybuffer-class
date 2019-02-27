@@ -6,6 +6,8 @@ import Data.ArrayBuffer.Typed.Gen
 
 import Prelude
 import Data.Maybe (Maybe (..))
+import Data.Tuple (Tuple)
+import Data.Either (Either)
 import Effect (Effect)
 import Effect.Console (log)
 import Effect.Unsafe (unsafePerformEffect)
@@ -54,6 +56,14 @@ main = do
   log "  Char"
   quickCheck' 1000 (arrayBufferIso :: Char -> Result)
 
+  log "  Maybe"
+  quickCheck (arrayBufferIso :: Maybe Char -> Result)
+  log "  Tuple"
+  quickCheck (arrayBufferIso :: Tuple Char Char -> Result)
+  log "  Either"
+  quickCheck (arrayBufferIso :: Either Char Char -> Result)
+  log "  Array"
+  quickCheck' 1000 (arrayBufferIso :: Array Char -> Result)
 
 
 
