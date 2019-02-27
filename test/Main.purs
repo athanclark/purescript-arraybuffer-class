@@ -8,6 +8,8 @@ import Prelude
 import Data.Maybe (Maybe (..))
 import Data.Tuple (Tuple)
 import Data.Either (Either)
+import Data.List (List)
+import Data.NonEmpty (NonEmpty)
 import Effect (Effect)
 import Effect.Console (log)
 import Effect.Unsafe (unsafePerformEffect)
@@ -64,6 +66,12 @@ main = do
   quickCheck (arrayBufferIso :: Either Char Char -> Result)
   log "  Array"
   quickCheck' 1000 (arrayBufferIso :: Array Char -> Result)
+  log "  List"
+  quickCheck' 1000 (arrayBufferIso :: List Char -> Result)
+  log "  NonEmpty Array"
+  quickCheck' 1000 (arrayBufferIso :: NonEmpty Array Char -> Result)
+  log "  NonEmpty List"
+  quickCheck' 1000 (arrayBufferIso :: NonEmpty List Char -> Result)
 
 
 

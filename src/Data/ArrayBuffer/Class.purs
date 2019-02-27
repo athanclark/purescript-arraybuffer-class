@@ -19,9 +19,12 @@ import Prelude
 import Data.Maybe (Maybe (..))
 import Data.Either (Either (..))
 import Data.Tuple (Tuple (..))
-import Data.Array (length) as Array
+import Data.List (List (..))
+import Data.Void (Void)
+import Data.NonEmpty (NonEmpty (..))
+import Data.Array (fromFoldable, toUnfoldable, cons, uncons) as Array
 import Data.Traversable (for_, traverse)
-import Data.Foldable (sum)
+import Data.Foldable (sum, length)
 import Data.Unfoldable (replicateA)
 import Data.UInt (fromInt, toInt, fromNumber, toNumber) as UInt
 import Data.Char (toCharCode, fromCharCode)
@@ -66,6 +69,8 @@ instance dynamicByteLengthFloat64LE :: DynamicByteLength Float64LE where
   byteLength _ = pure 8
 instance dynamicByteLengthUnit :: DynamicByteLength Unit where
   byteLength _ = pure 0
+instance dynamicByteLengthVoid :: DynamicByteLength Void where
+  byteLength _ = pure 0
 instance dynamicByteLengthBoolean :: DynamicByteLength Boolean where
   byteLength _ = pure 1
 instance dynamicByteLengthOrdering :: DynamicByteLength Ordering where
@@ -89,6 +94,12 @@ instance dynamicByteLengthEither :: (DynamicByteLength a, DynamicByteLength b) =
     Right y -> (_ + 1) <$> byteLength y
 instance dynamicByteLengthArray :: DynamicByteLength a => DynamicByteLength (Array a) where
   byteLength xs = (\ys -> sum ys + 4) <$> traverse byteLength xs
+instance dynamicByteLengthList :: DynamicByteLength a => DynamicByteLength (List a) where
+  byteLength xs = byteLength (Array.fromFoldable xs)
+instance dynamicByteLengthNonEmptyArray :: DynamicByteLength a => DynamicByteLength (NonEmpty Array a) where
+  byteLength (NonEmpty x xs) = byteLength (Array.cons x xs)
+instance dynamicByteLengthNonEmptyList :: DynamicByteLength a => DynamicByteLength (NonEmpty List a) where
+  byteLength (NonEmpty x xs) = byteLength (Cons x xs)
 
 
 
@@ -182,6 +193,10 @@ instance encodeArrayBufferUnit :: EncodeArrayBuffer Unit where
   putArrayBuffer b o _ = pure (Just 0)
 instance decodeArrayBufferUnit :: DecodeArrayBuffer Unit where
   readArrayBuffer b o = pure (Just unit)
+instance encodeArrayBufferVoid :: EncodeArrayBuffer Void where
+  putArrayBuffer b o _ = pure (Just 0)
+instance decodeArrayBufferVoid :: DecodeArrayBuffer Void where
+  readArrayBuffer b o = throw "Cannot decode a Void value"
 -- | Encodes the boolean into an unsigned word8
 instance encodeArrayBufferBoolean :: EncodeArrayBuffer Boolean where
   putArrayBuffer b o x =
@@ -393,8 +408,9 @@ instance decodeArrayBufferEither :: (DecodeArrayBuffer a, DecodeArrayBuffer b) =
                 | otherwise -> throw ("Incorrect Either encoding - flag out of range: " <> show i')
 instance encodeArrayBufferArray :: EncodeArrayBuffer a => EncodeArrayBuffer (Array a) where
   putArrayBuffer b o xs = do
-    let l = Array.length xs
-    mW <- putArrayBuffer b o (Uint32BE (UInt.fromNumber (unsafeCoerce l))) -- put array length as unsigned 32
+    let l :: Number
+        l = length xs
+    mW <- putArrayBuffer b o (Uint32BE (UInt.fromNumber l)) -- put array length as unsigned 32
     case mW of
       Nothing -> pure Nothing
       Just w -> do
@@ -423,7 +439,36 @@ instance decodeArrayBufferArray :: DecodeArrayBuffer a => DecodeArrayBuffer (Arr
               l' <- byteLength x
               Ref.write (o' + l') nextORef
               pure x
+instance encodeArrayBufferList :: EncodeArrayBuffer a => EncodeArrayBuffer (List a) where
+  putArrayBuffer b o xs = putArrayBuffer b o (Array.fromFoldable xs)
+instance decodeArrayBufferList :: DecodeArrayBuffer a => DecodeArrayBuffer (List a) where
+  readArrayBuffer b o = (map Array.toUnfoldable) <$> readArrayBuffer b o
+instance encodeArrayBufferNonEmptyArray :: EncodeArrayBuffer a => EncodeArrayBuffer (NonEmpty Array a) where
+  putArrayBuffer b o (NonEmpty x xs) = putArrayBuffer b o (Array.cons x xs)
+instance decodeArrayBufferNonEmptyArray :: DecodeArrayBuffer a => DecodeArrayBuffer (NonEmpty Array a) where
+  readArrayBuffer b o = do
+    mXs <- readArrayBuffer b o
+    case mXs of
+      Nothing -> pure Nothing
+      Just xs -> case Array.uncons xs of
+        Nothing -> throw ("Incorrect NonEmpty Array encoding - array is empty")
+        Just {head,tail} -> pure (Just (NonEmpty head tail))
+instance encodeArrayBufferNonEmptyList :: EncodeArrayBuffer a => EncodeArrayBuffer (NonEmpty List a) where
+  putArrayBuffer b o (NonEmpty x xs) = putArrayBuffer b o (Cons x xs)
+instance decodeArrayBufferNonEmptyList :: DecodeArrayBuffer a => DecodeArrayBuffer (NonEmpty List a) where
+  readArrayBuffer b o = do
+    mXs <- readArrayBuffer b o
+    case mXs of
+      Nothing -> pure Nothing
+      Just xs -> case xs of
+        Nil -> throw ("Incorrect NonEmpty List encoding - list is empty")
+        Cons head tail -> pure (Just (NonEmpty head tail))
 
+-- TODO String
+-- TODO NonEmpty
+-- TODO CodePoint?
+-- TODO RowToList for Rows
+-- TODO generics
 
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes
