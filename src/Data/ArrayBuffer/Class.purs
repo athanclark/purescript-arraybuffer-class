@@ -13,7 +13,7 @@ import Data.ArrayBuffer.ArrayBuffer (empty) as AB
 import Data.ArrayBuffer.DataView as DV
 
 import Prelude
-  ( Unit, Ordering (..)
+  ( Unit, Ordering (..), class Ord
   , (<$>), (<*>), (>>=), (<<<), (<=), (<>), (+), (-), (/=), (==), (<)
   , pure, otherwise, show, unit, bind, map, discard)
 import Data.Maybe (Maybe (..))
@@ -28,6 +28,8 @@ import Data.Monoid.Conj (Conj (..))
 import Data.Monoid.Disj (Disj (..))
 import Data.Monoid.Dual (Dual (..))
 import Data.Monoid.Endo (Endo (..))
+import Data.Set (Set, fromFoldable, toUnfoldable) as Set
+import Data.Map (Map, fromFoldable, toUnfoldable) as Map
 import Data.Array (fromFoldable, toUnfoldable, cons, uncons) as Array
 import Data.Enum (toEnum, fromEnum)
 import Data.Traversable (for_, traverse)
@@ -128,6 +130,10 @@ instance dynamicByteLengthConj :: DynamicByteLength a => DynamicByteLength (Conj
   byteLength (Conj x) = byteLength x
 instance dynamicByteLengthObject :: DynamicByteLength a => DynamicByteLength (O.Object a) where
   byteLength xs = byteLength (O.toAscUnfoldable xs :: Array (Tuple String a))
+instance dynamicByteLengthSet :: DynamicByteLength a => DynamicByteLength (Set.Set a) where
+  byteLength xs = byteLength (Set.toUnfoldable xs :: Array a)
+instance dynamicByteLengthMap :: (DynamicByteLength a, DynamicByteLength k) => DynamicByteLength (Map.Map k a) where
+  byteLength xs = byteLength (Map.toUnfoldable xs :: Array (Tuple k a))
 
 
 
@@ -213,6 +219,7 @@ instance decodeArrayBufferFloat64BE :: DecodeArrayBuffer Float64BE where
   readArrayBuffer b o = (map Float64BE) <$> DV.getFloat64be (DV.whole b) o
 instance decodeArrayBufferFloat64LE :: DecodeArrayBuffer Float64LE where
   readArrayBuffer b o = (map Float64LE) <$> DV.getFloat64le (DV.whole b) o
+
 
 
 -- * Casual instances
@@ -545,13 +552,20 @@ instance encodeArrayBufferObject :: EncodeArrayBuffer a => EncodeArrayBuffer (O.
   putArrayBuffer b o xs = putArrayBuffer b o (O.toAscUnfoldable xs :: Array (Tuple String a))
 instance decodeArrayBufferObject :: DecodeArrayBuffer a => DecodeArrayBuffer (O.Object a) where
   readArrayBuffer b o = (map (O.fromFoldable :: Array (Tuple String a) -> O.Object a)) <$> readArrayBuffer b o
+instance encodeArrayBufferSet :: EncodeArrayBuffer a => EncodeArrayBuffer (Set.Set a) where
+  putArrayBuffer b o xs = putArrayBuffer b o (Set.toUnfoldable xs :: Array a)
+instance decodeArrayBufferSet :: (Ord a, DecodeArrayBuffer a) => DecodeArrayBuffer (Set.Set a) where
+  readArrayBuffer b o = (map (Set.fromFoldable :: Array a -> Set.Set a)) <$> readArrayBuffer b o
+instance encodeArrayBufferMap :: (EncodeArrayBuffer a, EncodeArrayBuffer k) => EncodeArrayBuffer (Map.Map k a) where
+  putArrayBuffer b o xs = putArrayBuffer b o (Map.toUnfoldable xs :: Array (Tuple k a))
+instance decodeArrayBufferMap :: (Ord k, DecodeArrayBuffer k, DecodeArrayBuffer a) => DecodeArrayBuffer (Map.Map k a) where
+  readArrayBuffer b o = (map (Map.fromFoldable :: Array (Tuple k a) -> Map.Map k a)) <$> readArrayBuffer b o
 
 
--- TODO String
+
 -- TODO RowToList for Rows
 -- TODO generics
 -- ordered containers, unordered containers
--- object
 
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes

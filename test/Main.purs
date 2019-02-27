@@ -10,7 +10,9 @@ import Data.Tuple (Tuple)
 import Data.Either (Either)
 import Data.List (List)
 import Data.NonEmpty (NonEmpty)
-import Foreign.Object (Object, fromFoldable, toAscUnfoldable) as O
+import Data.Set (Set, fromFoldable) as Set
+import Data.Map (Map, fromFoldable) as Map
+import Foreign.Object (Object, fromFoldable) as O
 import Effect (Effect)
 import Effect.Console (log)
 import Effect.Unsafe (unsafePerformEffect)
@@ -80,13 +82,27 @@ main = do
 
   log "  Object"
   quickCheckGen' 1000 (arrayBufferIso <$> genObject)
+  log "  Set"
+  quickCheckGen' 1000 (arrayBufferIso <$> genSet)
+  log "  Map"
+  quickCheckGen' 1000 (arrayBufferIso <$> genMap)
 
 
 
-genObject :: Gen (O.Object Char)
+genObject :: Gen (O.Object String)
 genObject = do
-  (xs :: Array (Tuple String Char)) <- arbitrary
+  (xs :: Array (Tuple String String)) <- arbitrary
   pure (O.fromFoldable xs)
+
+genSet :: Gen (Set.Set String)
+genSet = do
+  (xs :: Array String) <- arbitrary
+  pure (Set.fromFoldable xs)
+
+genMap :: Gen (Map.Map String String)
+genMap = do
+  (xs :: Array (Tuple String String)) <- arbitrary
+  pure (Map.fromFoldable xs)
 
 
 arrayBufferIso :: forall a. Show a => Eq a => EncodeArrayBuffer a => DecodeArrayBuffer a => a -> Result
