@@ -23,11 +23,14 @@ import Data.List (List (..))
 import Data.Void (Void)
 import Data.NonEmpty (NonEmpty (..))
 import Data.Array (fromFoldable, toUnfoldable, cons, uncons) as Array
+import Data.Enum (toEnum, fromEnum)
 import Data.Traversable (for_, traverse)
 import Data.Foldable (sum, length)
 import Data.Unfoldable (replicateA)
 import Data.UInt (fromInt, toInt, fromNumber, toNumber) as UInt
-import Data.Char (toCharCode, fromCharCode)
+-- import Data.Char (toCharCode, fromCharCode)
+import Data.String.CodePoints (CodePoint, codePointFromChar, singleton)
+import Data.String.CodeUnits (toChar)
 import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
 import Effect (Effect)
 import Effect.Exception (throw)
@@ -75,13 +78,15 @@ instance dynamicByteLengthBoolean :: DynamicByteLength Boolean where
   byteLength _ = pure 1
 instance dynamicByteLengthOrdering :: DynamicByteLength Ordering where
   byteLength _ = pure 1
-instance dynamicByteLengthChar :: DynamicByteLength Char where
-  byteLength c = case toCharCode c of
+instance dynamicByteLengthCodePoint :: DynamicByteLength CodePoint where
+  byteLength c = case fromEnum c of
     v | v <= 0x7f -> pure 1
       | v <= 0x7ff -> pure 2
       | v <= 0xffff -> pure 3
       | v <= 0x10ffff -> pure 4
-      | otherwise -> throw ("Char not in unicode range: " <> show c)
+      | otherwise -> throw ("CodePoint not in unicode range: " <> show c)
+instance dynamicByteLengthChar :: DynamicByteLength Char where
+  byteLength c = byteLength (codePointFromChar c)
 instance dynamicByteLengthMaybe :: DynamicByteLength a => DynamicByteLength (Maybe a) where
   byteLength mX = case mX of
     Nothing -> pure 1
@@ -231,9 +236,9 @@ instance decodeArrayBufferOrdering :: DecodeArrayBuffer Ordering where
                     | v' == 2 -> pure (Just GT)
                     | otherwise -> throw ("Not a Boolean ArrayBuffer encoding: " <> show v)
     in  readArrayBuffer b o >>= f
-instance encodeArrayBufferChar :: EncodeArrayBuffer Char where
+instance encodeArrayBufferCodePoint :: EncodeArrayBuffer CodePoint where
   putArrayBuffer b o c =
-    let v = toCharCode c
+    let v = fromEnum c
         z = v .&. 0x3f
         y = (shr v 6) .&. 0x3f
         x = (shr v 12) .&. 0x3f
@@ -285,7 +290,7 @@ instance encodeArrayBufferChar :: EncodeArrayBuffer Char where
                             Just written''' ->
                               pure (Just (written + written' + written'' + written'''))
             | otherwise -> throw ("Char not in unicode range: " <> show c)
-instance decodeArrayBufferChar :: DecodeArrayBuffer Char where
+instance decodeArrayBufferCodePoint :: DecodeArrayBuffer CodePoint where
   readArrayBuffer b o = do
     let readNextByte o' = (map (\(Uint8 v) -> UInt.toInt v)) <$> readArrayBuffer b o'
         shl6 x = shl x 6
@@ -312,9 +317,19 @@ instance decodeArrayBufferChar :: DecodeArrayBuffer Char where
                               case mZ of
                                 Nothing -> throw ("Incorrect unicode char encoding - w: " <> show w <> ", x: " <> show x <> ", y: " <> show y)
                                 Just z -> pure (z .|. shl6 (y .|. shl6 (x .|. shl6 (xor 0xf0 w))))
-        case fromCharCode r of -- FIXME sure this works for Ints, and shouldn't be UInts? It's up to 4 bytes...
+        case toEnum r of -- FIXME sure this works for Ints, and shouldn't be UInts? It's up to 4 bytes...
           Nothing -> throw ("Incorrect unicode char encoding: " <> show r)
           Just c -> pure (Just c)
+instance encodeArrayBufferChar :: EncodeArrayBuffer Char where
+  putArrayBuffer b o x = putArrayBuffer b o (codePointFromChar x)
+instance decodeArrayBufferChar :: DecodeArrayBuffer Char where
+  readArrayBuffer b o =
+    let codePointToChar mc = case mc of
+          Nothing -> pure Nothing
+          Just c -> case toChar (singleton c) of
+            Nothing -> throw ("Code Point not capable of being a char: " <> show c)
+            Just c' -> pure (Just c')
+    in  readArrayBuffer b o >>= codePointToChar
 
 
 -- Trivial containers
@@ -465,7 +480,6 @@ instance decodeArrayBufferNonEmptyList :: DecodeArrayBuffer a => DecodeArrayBuff
         Cons head tail -> pure (Just (NonEmpty head tail))
 
 -- TODO String
--- TODO NonEmpty
 -- TODO CodePoint?
 -- TODO RowToList for Rows
 -- TODO generics
