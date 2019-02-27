@@ -22,7 +22,8 @@ import Data.Tuple (Tuple (..))
 import Data.Array (length) as Array
 import Data.Traversable (for_, traverse)
 import Data.Foldable (sum)
-import Data.UInt (fromInt, toInt, fromNumber) as UInt
+import Data.Unfoldable (replicateA)
+import Data.UInt (fromInt, toInt, fromNumber, toNumber) as UInt
 import Data.Char (toCharCode, fromCharCode)
 import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
 import Effect (Effect)
@@ -397,7 +398,7 @@ instance encodeArrayBufferArray :: EncodeArrayBuffer a => EncodeArrayBuffer (Arr
     case mW of
       Nothing -> pure Nothing
       Just w -> do
-        nextORef <- Ref.new (o + w)
+        nextORef <- Ref.new (o + w) -- w should be 4
         for_ xs \x -> do
           o' <- Ref.read nextORef
           mW' <- putArrayBuffer b o' x -- put each (possibly variadic) entity
@@ -406,6 +407,22 @@ instance encodeArrayBufferArray :: EncodeArrayBuffer a => EncodeArrayBuffer (Arr
             Just w' -> Ref.write (o' + w') nextORef
         w'' <- Ref.read nextORef
         pure (Just w'')
+instance decodeArrayBufferArray :: DecodeArrayBuffer a => DecodeArrayBuffer (Array a) where
+  readArrayBuffer b o = do
+    mL <- readArrayBuffer b o
+    case mL of
+      Nothing -> pure Nothing
+      Just (Uint32BE l) -> do
+        nextORef <- Ref.new (o + 4)
+        Just <$> replicateA (unsafeCoerce (UInt.toNumber l)) do
+          o' <- Ref.read nextORef
+          mX <- readArrayBuffer b o'
+          case mX of
+            Nothing -> throw ("Incorrect ArrayBuffer encoding - retreived length, but not all values: " <> show o')
+            Just x -> do
+              l' <- byteLength x
+              Ref.write (o' + l') nextORef
+              pure x
 
 
 
