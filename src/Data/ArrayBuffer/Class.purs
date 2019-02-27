@@ -28,7 +28,6 @@ import Data.Traversable (for_, traverse)
 import Data.Foldable (sum, length)
 import Data.Unfoldable (replicateA)
 import Data.UInt (fromInt, toInt, fromNumber, toNumber) as UInt
--- import Data.Char (toCharCode, fromCharCode)
 import Data.String.CodePoints (CodePoint, codePointFromChar, singleton)
 import Data.String.CodeUnits (toChar)
 import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
@@ -480,9 +479,11 @@ instance decodeArrayBufferNonEmptyList :: DecodeArrayBuffer a => DecodeArrayBuff
         Cons head tail -> pure (Just (NonEmpty head tail))
 
 -- TODO String
--- TODO CodePoint?
 -- TODO RowToList for Rows
 -- TODO generics
+-- ordered containers, unordered containers
+-- object
+-- monoid newtypes
 
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes
