@@ -6,16 +6,10 @@ import Data.ArrayBuffer.Typed.Gen
 
 import Prelude
 import Data.Maybe (Maybe (..))
-import Data.UInt as UInt
-import Data.UInt.Gen (genUInt)
-import Data.Float32.Gen (chooseFloat32)
-import Data.Int (floor)
 import Effect (Effect)
 import Effect.Console (log)
 import Effect.Unsafe (unsafePerformEffect)
-import Test.QuickCheck (Result (Failed), (===), quickCheckGen)
-import Test.QuickCheck.Gen (Gen, chooseInt, choose)
-import Math (pow)
+import Test.QuickCheck (Result (Failed), (===), quickCheckGen, quickCheckGen', quickCheck, quickCheck')
 
 
 
@@ -23,9 +17,9 @@ main :: Effect Unit
 main = do
   log "Running tests..."
   log "  Uint32BE:"
-  quickCheckGen ((arrayBufferIso <<< Uint32BE) <$> genUint32)
+  quickCheckGen' 1000 ((arrayBufferIso <<< Uint32BE) <$> genUint32)
   log "  Uint32LE:"
-  quickCheckGen ((arrayBufferIso <<< Uint32LE) <$> genUint32)
+  quickCheckGen' 1000 ((arrayBufferIso <<< Uint32LE) <$> genUint32)
   log "  Uint16BE:"
   quickCheckGen ((arrayBufferIso <<< Uint16BE) <$> genUint16)
   log "  Uint16LE:"
@@ -33,9 +27,9 @@ main = do
   log "  Uint8:"
   quickCheckGen ((arrayBufferIso <<< Uint8) <$> genUint8)
   log "  Int32BE:"
-  quickCheckGen ((arrayBufferIso <<< Int32BE) <$> genInt32)
+  quickCheckGen' 1000 ((arrayBufferIso <<< Int32BE) <$> genInt32)
   log "  Int32LE:"
-  quickCheckGen ((arrayBufferIso <<< Int32LE) <$> genInt32)
+  quickCheckGen' 1000 ((arrayBufferIso <<< Int32LE) <$> genInt32)
   log "  Int16BE:"
   quickCheckGen ((arrayBufferIso <<< Int16BE) <$> genInt16)
   log "  Int16LE:"
@@ -47,9 +41,18 @@ main = do
   log "  Float32LE:"
   quickCheckGen ((arrayBufferIso <<< Float32LE) <$> genFloat32)
   log "  Float64BE:"
-  quickCheckGen ((arrayBufferIso <<< Float64BE) <$> genFloat64)
+  quickCheckGen' 1000 ((arrayBufferIso <<< Float64BE) <$> genFloat64)
   log "  Float64LE:"
-  quickCheckGen ((arrayBufferIso <<< Float64LE) <$> genFloat64)
+  quickCheckGen' 1000 ((arrayBufferIso <<< Float64LE) <$> genFloat64)
+
+  log "  Unit"
+  quickCheck (arrayBufferIso :: Unit -> Result)
+  log "  Boolean"
+  quickCheck (arrayBufferIso :: Boolean -> Result)
+  log "  Ordering"
+  quickCheck (arrayBufferIso :: Ordering -> Result)
+  log "  Char"
+  quickCheck' 1000 (arrayBufferIso :: Char -> Result)
 
 
 
