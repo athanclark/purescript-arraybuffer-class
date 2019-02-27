@@ -126,6 +126,8 @@ instance dynamicByteLengthDisj :: DynamicByteLength a => DynamicByteLength (Disj
   byteLength (Disj x) = byteLength x
 instance dynamicByteLengthConj :: DynamicByteLength a => DynamicByteLength (Conj a) where
   byteLength (Conj x) = byteLength x
+instance dynamicByteLengthObject :: DynamicByteLength a => DynamicByteLength (O.Object a) where
+  byteLength xs = byteLength (O.toAscUnfoldable xs :: Array (Tuple String a))
 
 
 
@@ -539,7 +541,10 @@ instance decodeArrayBufferNonEmptyList :: DecodeArrayBuffer a => DecodeArrayBuff
 
 -- Larger containers
 
--- instance encodeArrayBufferObject :: EncodeArray
+instance encodeArrayBufferObject :: EncodeArrayBuffer a => EncodeArrayBuffer (O.Object a) where
+  putArrayBuffer b o xs = putArrayBuffer b o (O.toAscUnfoldable xs :: Array (Tuple String a))
+instance decodeArrayBufferObject :: DecodeArrayBuffer a => DecodeArrayBuffer (O.Object a) where
+  readArrayBuffer b o = (map (O.fromFoldable :: Array (Tuple String a) -> O.Object a)) <$> readArrayBuffer b o
 
 
 -- TODO String

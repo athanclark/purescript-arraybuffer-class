@@ -10,10 +10,13 @@ import Data.Tuple (Tuple)
 import Data.Either (Either)
 import Data.List (List)
 import Data.NonEmpty (NonEmpty)
+import Foreign.Object (Object, fromFoldable, toAscUnfoldable) as O
 import Effect (Effect)
 import Effect.Console (log)
 import Effect.Unsafe (unsafePerformEffect)
-import Test.QuickCheck (Result (Failed), (===), quickCheckGen, quickCheckGen', quickCheck, quickCheck')
+import Test.QuickCheck
+  (Result (Failed), (===), quickCheckGen, quickCheckGen', quickCheck, quickCheck', arbitrary)
+import Test.QuickCheck.Gen (Gen)
 
 
 
@@ -61,20 +64,29 @@ main = do
   quickCheck' 1000 (arrayBufferIso :: String -> Result)
 
   log "  Maybe"
-  quickCheck (arrayBufferIso :: Maybe Char -> Result)
+  quickCheck (arrayBufferIso :: Maybe String -> Result)
   log "  Tuple"
-  quickCheck (arrayBufferIso :: Tuple Char Char -> Result)
+  quickCheck (arrayBufferIso :: Tuple String String -> Result)
   log "  Either"
-  quickCheck (arrayBufferIso :: Either Char Char -> Result)
+  quickCheck (arrayBufferIso :: Either String String -> Result)
   log "  Array"
-  quickCheck' 1000 (arrayBufferIso :: Array Char -> Result)
+  quickCheck' 1000 (arrayBufferIso :: Array String -> Result)
   log "  List"
-  quickCheck' 1000 (arrayBufferIso :: List Char -> Result)
+  quickCheck' 1000 (arrayBufferIso :: List String -> Result)
   log "  NonEmpty Array"
-  quickCheck' 1000 (arrayBufferIso :: NonEmpty Array Char -> Result)
+  quickCheck' 1000 (arrayBufferIso :: NonEmpty Array String -> Result)
   log "  NonEmpty List"
-  quickCheck' 1000 (arrayBufferIso :: NonEmpty List Char -> Result)
+  quickCheck' 1000 (arrayBufferIso :: NonEmpty List String -> Result)
 
+  log "  Object"
+  quickCheckGen' 1000 (arrayBufferIso <$> genObject)
+
+
+
+genObject :: Gen (O.Object Char)
+genObject = do
+  (xs :: Array (Tuple String Char)) <- arbitrary
+  pure (O.fromFoldable xs)
 
 
 arrayBufferIso :: forall a. Show a => Eq a => EncodeArrayBuffer a => DecodeArrayBuffer a => a -> Result
