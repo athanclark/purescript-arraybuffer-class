@@ -700,7 +700,6 @@ instance decodeArrayBufferAV :: TA.TypedArray a t => DecodeArrayBuffer (AV a t) 
 
 
 -- TODO generics
--- TODO Vec? Sized in advance?
 
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes
