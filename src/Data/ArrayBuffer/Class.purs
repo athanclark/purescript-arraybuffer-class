@@ -12,9 +12,11 @@ module Data.ArrayBuffer.Class
   ) where
 
 import Data.ArrayBuffer.Class.Types
-import Data.ArrayBuffer.Types (ArrayBuffer, ByteOffset, ByteLength)
-import Data.ArrayBuffer.ArrayBuffer (empty) as AB
+import Data.ArrayBuffer.Types
+  (ArrayBuffer, ByteOffset, ByteLength, DataView, ArrayView, Uint8Array)
+import Data.ArrayBuffer.ArrayBuffer (empty, byteLength, slice) as AB
 import Data.ArrayBuffer.DataView as DV
+import Data.ArrayBuffer.Typed (buffer, whole, traverse_, class TypedArray) as TA
 
 import Prelude
   ( Unit, Ordering (..), class Ord
@@ -55,7 +57,7 @@ import Record (insert, get) as Record
 import Type.Data.RowList (RLProxy (..))
 import Effect (Effect)
 import Effect.Exception (throw)
-import Effect.Ref (new, read, write) as Ref
+import Effect.Ref (new, read, write, modify) as Ref
 import Unsafe.Coerce (unsafeCoerce)
 
 
@@ -150,6 +152,14 @@ instance dynamicByteLengthHashSet :: DynamicByteLength a => DynamicByteLength (H
   byteLength xs = byteLength (HS.toArray xs)
 instance dynamicByteLengthHashMap :: (DynamicByteLength k, DynamicByteLength a) => DynamicByteLength (HM.HashMap k a) where
   byteLength xs = byteLength (HM.toArrayBy Tuple xs)
+instance dynamicByteLengthArrayBuffer :: DynamicByteLength ArrayBuffer where
+  byteLength xs = pure (AB.byteLength xs + 4)
+instance dynamicByteLengthDataView :: DynamicByteLength DataView where
+  byteLength xs = byteLength (DV.buffer xs)
+instance dynamicByteLengthArrayView :: DynamicByteLength (ArrayView a) where
+  byteLength xs = byteLength (TA.buffer xs)
+instance dynamicByteLengthRecord :: GEncodeArrayBuffer row list => DynamicByteLength (Record row) where
+  byteLength xs = gPutArrayBuffer xs (RLProxy :: RLProxy list) >>= byteLength
 
 
 
@@ -585,6 +595,46 @@ instance encodeArrayBufferHashMap :: (EncodeArrayBuffer k, EncodeArrayBuffer a) 
   putArrayBuffer b o xs = putArrayBuffer b o (HM.toArrayBy Tuple xs)
 instance decodeArrayBufferHashMap :: (Hashable k, DecodeArrayBuffer k, DecodeArrayBuffer a) => DecodeArrayBuffer (HM.HashMap k a) where
   readArrayBuffer b o = (map HM.fromArray) <$> readArrayBuffer b o
+
+-- ArrayBuffers
+
+instance encodeArrayBufferArrayBuffer :: EncodeArrayBuffer ArrayBuffer where
+  putArrayBuffer b o xs = do
+    l <- byteLength xs
+    mW <- putArrayBuffer b o (Uint32BE (UInt.fromNumber (unsafeCoerce l)))
+    case mW of
+      Nothing -> pure Nothing
+      Just w -> do
+        (ta :: Uint8Array) <- TA.whole xs
+        let target = DV.whole b
+        offsetRef <- Ref.new (o + w)
+        let go x = do
+              o' <- Ref.modify (_ + 1) offsetRef
+              s <- DV.setUint8 target o' x
+              if s then pure unit else throw ("Not enough room for the ArrayBuffer in the target: " <> show o')
+        TA.traverse_ go ta
+        Just <$> Ref.read offsetRef
+instance decodeArrayBufferArrayBuffer :: DecodeArrayBuffer ArrayBuffer where
+  readArrayBuffer b o = do
+    mL <- readArrayBuffer b o
+    case mL of
+      Nothing -> pure Nothing
+      Just (Uint32BE l) ->
+        let l' = unsafeCoerce (UInt.toNumber l)
+        in  pure (Just (AB.slice (o + 4) (o + 4 + l') b))
+instance encodeArrayBufferDataView :: EncodeArrayBuffer DataView where
+  putArrayBuffer b o xs = putArrayBuffer b o (DV.buffer xs)
+instance decodeArrayBufferDataView :: DecodeArrayBuffer DataView where
+  readArrayBuffer b o = (map DV.whole) <$> readArrayBuffer b o
+instance encodeArrayBufferArrayView :: EncodeArrayBuffer (ArrayView a) where
+  putArrayBuffer b o xs = putArrayBuffer b o (TA.buffer xs)
+instance decodeArrayBufferArrayView :: TA.TypedArray a t => DecodeArrayBuffer (ArrayView a) where
+  readArrayBuffer b o = do
+    mX <- readArrayBuffer b o
+    case mX of
+      Nothing -> pure Nothing
+      Just x -> Just <$> TA.whole x
+
 
 
 -- TODO ArrayBuffer, DataView, ArrayView
