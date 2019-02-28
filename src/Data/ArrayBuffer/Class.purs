@@ -4,11 +4,14 @@ module Data.ArrayBuffer.Class
   , class DynamicByteLength, byteLength
   , encodeArrayBuffer
   , decodeArrayBuffer
-  , module Data.ArrayBuffer.Class.Types
   , class GEncodeArrayBuffer
   , gPutArrayBuffer
   , class GDecodeArrayBuffer
   , gReadArrayBuffer
+  , genericByteLength
+  , genericPutArrayBuffer
+  , genericReadArrayBuffer
+  , module Data.ArrayBuffer.Class.Types
   ) where
 
 import Data.ArrayBuffer.Class.Types
@@ -52,6 +55,7 @@ import Data.String.CodePoints (CodePoint, codePointFromChar, singleton)
 import Data.String.CodeUnits (toChar)
 import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
 import Data.Symbol (class IsSymbol, SProxy (..), reflectSymbol)
+import Data.Generic.Rep (class Generic, to, from, NoConstructors, NoArguments (..), Sum (..), Product (..), Constructor (..), Argument (..))
 import Foreign.Object (Object, toAscUnfoldable, fromFoldable, lookup, insert, empty) as O
 import Prim.Row (class Cons, class Lacks)
 import Prim.RowList (kind RowList, Cons, Nil, class RowToList) as RL
@@ -68,6 +72,12 @@ import Unsafe.Coerce (unsafeCoerce)
 class DynamicByteLength a where
   -- | Get the byte length of a value at runtime. Should be identical for read and written values.
   byteLength :: a -> Effect ByteLength
+
+-- | Determine a data type's byte length by walking its generic structure - note there is significant
+-- | overhead due to nested `Sum` types.
+genericByteLength :: forall a rep. Generic a rep => DynamicByteLength rep => a -> Effect ByteLength
+genericByteLength x = byteLength (from x)
+
 
 instance dynamicByteLengthUint32BE :: DynamicByteLength Uint32BE where
   byteLength _ = pure 4
@@ -168,13 +178,27 @@ instance dynamicByteLengthAV :: DynamicByteLength (AV a t) where
   byteLength (AV xs) = byteLength xs
 instance dynamicByteLengthRecord :: GEncodeArrayBuffer row list => DynamicByteLength (Record row) where
   byteLength xs = gPutArrayBuffer xs (RLProxy :: RLProxy list) >>= byteLength
+instance dynamicByteLengthNoConstructors :: DynamicByteLength NoConstructors where
+  byteLength _ = pure 0
+instance dynamicByteLengthNoArguments :: DynamicByteLength NoArguments where
+  byteLength NoArguments = pure 0
+instance dynamicByteLengthSum :: (DynamicByteLength a, DynamicByteLength b) => DynamicByteLength (Sum a b) where
+  byteLength s = case s of
+    Inl x -> (_ + 1) <$> byteLength x
+    Inr y -> (_ + 1) <$> byteLength y
+instance dynamicByteLengthProduct :: (DynamicByteLength a, DynamicByteLength b) => DynamicByteLength (Product a b) where
+  byteLength (Product x y) = (+) <$> byteLength x <*> byteLength y
+instance dynamicByteLengthConstructor :: (DynamicByteLength a) => DynamicByteLength (Constructor name a) where
+  byteLength (Constructor x) = byteLength x
+instance dynamicByteLengthArgument :: (DynamicByteLength a) => DynamicByteLength (Argument a) where
+  byteLength (Argument x) = byteLength x
 
 
 
 class EncodeArrayBuffer a where
   -- | Returns the bytes written indicating _partial_ success - for exact success, the written
   -- | bytes should equal the value's dynamic `byteLength`. This function should
-  -- | strictly write to the `ArrayBuffer`, and shouldn't attempt to read it.
+  -- | strictly write to the `ArrayBuffer`, and shouldn't attempt to read from it.
   putArrayBuffer :: ArrayBuffer -- ^ Storage medium
                  -> ByteOffset -- ^ Position to store
                  -> a -- ^ Value to store
@@ -186,6 +210,26 @@ class DecodeArrayBuffer a where
   readArrayBuffer :: ArrayBuffer -- ^ Storage medium
                   -> ByteOffset -- ^ Position to read from
                   -> Effect (Maybe a)
+
+
+-- | Write data to an `ArrayBuffer` by walking its `Generic` structure - note this causes significant
+-- | overhead from nested `Sum` types.
+genericPutArrayBuffer :: forall a rep
+                       . Generic a rep
+                      => EncodeArrayBuffer rep
+                      => ArrayBuffer -> ByteOffset -> a -> Effect (Maybe ByteLength)
+genericPutArrayBuffer b o x = putArrayBuffer b o (from x)
+
+
+-- | Read data from an `ArrayBuffer` by building its `Generic` structure - note this causes significant
+-- | overhead from nested `Sum` types.
+genericReadArrayBuffer :: forall a rep
+                        . Generic a rep
+                       => DecodeArrayBuffer rep
+                       => ArrayBuffer -> ByteOffset -> Effect (Maybe a)
+genericReadArrayBuffer b o = (map to) <$> readArrayBuffer b o
+
+
 
 -- Numeric instances
 
@@ -266,7 +310,6 @@ instance encodeArrayBufferVoid :: EncodeArrayBuffer Void where
   putArrayBuffer b o _ = pure (Just 0)
 instance decodeArrayBufferVoid :: DecodeArrayBuffer Void where
   readArrayBuffer b o = throw "Cannot decode a Void value"
--- | Encodes the boolean into an unsigned word8
 instance encodeArrayBufferBoolean :: EncodeArrayBuffer Boolean where
   putArrayBuffer b o x =
     let v = if x then 1 else 0
@@ -561,7 +604,7 @@ instance encodeArrayBufferVec :: (Nat s, EncodeArrayBuffer a) => EncodeArrayBuff
     nextORef <- Ref.new o
     for_ xs \x -> do
       o' <- Ref.read nextORef
-      mW' <- putArrayBuffer b o' x -- put each (possibly variadic) entity
+      mW' <- putArrayBuffer b o' x
       case mW' of
         Nothing -> throw ("Incorrect ArrayBuffer length - wrote vec's possible bytes: " <> show o')
         Just w' -> Ref.write (o' + w') nextORef
@@ -698,8 +741,44 @@ instance decodeArrayBufferAV :: TA.TypedArray a t => DecodeArrayBuffer (AV a t) 
   readArrayBuffer b o = (map AV) <$> readArrayBuffer b o
 
 
+-- Generics
 
--- TODO generics
+instance encodeArrayBufferNoConstructors :: EncodeArrayBuffer NoConstructors where
+  putArrayBuffer b o _ = pure (Just 0)
+instance decodeArrayBufferNoConstructors :: DecodeArrayBuffer NoConstructors where
+  readArrayBuffer b o = throw "Can't generate a NoConstructors value"
+instance encodeArrayBufferNoArguments :: EncodeArrayBuffer NoArguments where
+  putArrayBuffer b o NoArguments = pure (Just 0)
+instance decodeArrayBufferNoArguments :: DecodeArrayBuffer NoArguments where
+  readArrayBuffer b o = pure (Just NoArguments)
+instance encodeArrayBufferSum :: (EncodeArrayBuffer a, EncodeArrayBuffer b) => EncodeArrayBuffer (Sum a b) where
+  putArrayBuffer b o s =
+    let v = case s of
+              Inl x -> Left x
+              Inr y -> Right y
+    in  putArrayBuffer b o v
+instance decodeArrayBufferSum :: (DecodeArrayBuffer a, DecodeArrayBuffer b, DynamicByteLength a, DynamicByteLength b) => DecodeArrayBuffer (Sum a b) where
+  readArrayBuffer b o =
+    let getS v = case v of
+          Left x -> Inl x
+          Right y -> Inr y
+    in  (map getS) <$> readArrayBuffer b o
+instance encodeArrayBufferProduct :: (EncodeArrayBuffer a, EncodeArrayBuffer b) => EncodeArrayBuffer (Product a b) where
+  putArrayBuffer b o (Product x y) = putArrayBuffer b o (Tuple x y)
+instance decodeArrayBufferProduct :: (DecodeArrayBuffer a, DecodeArrayBuffer b, DynamicByteLength a, DynamicByteLength b) => DecodeArrayBuffer (Product a b) where
+  readArrayBuffer b o =
+    let getS (Tuple x y) = Product x y
+    in  (map getS) <$> readArrayBuffer b o
+instance encodeArrayBufferConstructor :: (EncodeArrayBuffer a) => EncodeArrayBuffer (Constructor name a) where
+  putArrayBuffer b o (Constructor x) = putArrayBuffer b o x
+instance decodeArrayBufferConstructor :: (DecodeArrayBuffer a) => DecodeArrayBuffer (Constructor name a) where
+  readArrayBuffer b o = (map Constructor) <$> readArrayBuffer b o
+instance encodeArrayBufferArgument :: (EncodeArrayBuffer a) => EncodeArrayBuffer (Argument a) where
+  putArrayBuffer b o (Argument x) = putArrayBuffer b o x
+instance decodeArrayBufferArgument :: (DecodeArrayBuffer a) => DecodeArrayBuffer (Argument a) where
+  readArrayBuffer b o = (map Argument) <$> readArrayBuffer b o
+
+
 
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes
@@ -719,6 +798,8 @@ encodeArrayBuffer x = do
 -- | Attempt to parse a value from an `ArrayBuffer`, starting at the first index.
 decodeArrayBuffer :: forall a. DecodeArrayBuffer a => ArrayBuffer -> Effect (Maybe a)
 decodeArrayBuffer b = readArrayBuffer b 0
+
+
 
 
 class GEncodeArrayBuffer (row :: # Type) (list :: RL.RowList) where
@@ -742,7 +823,6 @@ instance gEncodeArrayBufferCons ::
     x <- encodeArrayBuffer value
     rest <- gPutArrayBuffer row (RLProxy :: RLProxy tail)
     pure (O.insert (reflectSymbol sProxy) x rest)
-
 
 class GDecodeArrayBuffer (row :: # Type) (list :: RL.RowList) | list -> row where
   gReadArrayBuffer :: O.Object ArrayBuffer -> RLProxy list -> Effect (Record row)

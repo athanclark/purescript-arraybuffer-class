@@ -6,6 +6,11 @@
     "bower_components",
     "output"
   ],
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/athanclark/purescript-arraybuffer-class.git"
+  },
   "dependencies": {
     "purescript-prelude": "^4.1.0",
     "purescript-effect": "^2.0.1",
