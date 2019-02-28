@@ -52,7 +52,7 @@ import Data.Int.Bits ((.|.), (.&.), shr, shl, xor)
 import Data.Symbol (class IsSymbol, SProxy (..), reflectSymbol)
 import Foreign.Object (Object, toAscUnfoldable, fromFoldable, lookup, insert, empty) as O
 import Prim.Row (class Cons, class Lacks)
-import Prim.RowList (kind RowList, Cons, Nil) as RL
+import Prim.RowList (kind RowList, Cons, Nil, class RowToList) as RL
 import Record (insert, get) as Record
 import Type.Data.RowList (RLProxy (..))
 import Effect (Effect)
@@ -163,7 +163,7 @@ instance dynamicByteLengthRecord :: GEncodeArrayBuffer row list => DynamicByteLe
 
 
 
-class DynamicByteLength a <= EncodeArrayBuffer a where
+class EncodeArrayBuffer a where
   -- | Returns the bytes written indicating _partial_ success - for exact success, the written
   -- | bytes should equal the value's dynamic `byteLength`. This function should
   -- | strictly write to the `ArrayBuffer`, and shouldn't attempt to read it.
@@ -172,7 +172,7 @@ class DynamicByteLength a <= EncodeArrayBuffer a where
                  -> a -- ^ Value to store
                  -> Effect (Maybe ByteLength)
 
-class DynamicByteLength a <= DecodeArrayBuffer a where
+class DecodeArrayBuffer a where
   -- | Returns the value parsed if successful.
   -- | This function should strictly read the `ArrayBuffer`, and shouldn't attempt to write to it.
   readArrayBuffer :: ArrayBuffer -- ^ Storage medium
@@ -465,7 +465,7 @@ instance encodeArrayBufferTuple :: (EncodeArrayBuffer a, EncodeArrayBuffer b) =>
         case mW' of
           Nothing -> pure (Just w) -- FIXME warn?
           Just w' -> pure (Just (w + w'))
-instance decodeArrayBufferTuple :: (DecodeArrayBuffer a, DecodeArrayBuffer b) => DecodeArrayBuffer (Tuple a b) where
+instance decodeArrayBufferTuple :: (DecodeArrayBuffer a, DecodeArrayBuffer b, DynamicByteLength a, DynamicByteLength b) => DecodeArrayBuffer (Tuple a b) where
   readArrayBuffer b o = do
     mX <- readArrayBuffer b o
     case mX of
@@ -496,7 +496,7 @@ instance encodeArrayBufferEither :: (EncodeArrayBuffer a, EncodeArrayBuffer b) =
           case mW' of
             Nothing -> pure (Just 1) -- FIXME warn?
             Just w' -> pure (Just (w' + 1))
-instance decodeArrayBufferEither :: (DecodeArrayBuffer a, DecodeArrayBuffer b) => DecodeArrayBuffer (Either a b) where
+instance decodeArrayBufferEither :: (DecodeArrayBuffer a, DecodeArrayBuffer b, DynamicByteLength a, DynamicByteLength b) => DecodeArrayBuffer (Either a b) where
   readArrayBuffer b o = do
     mX <- readArrayBuffer b o
     case mX of
@@ -532,7 +532,7 @@ instance encodeArrayBufferArray :: EncodeArrayBuffer a => EncodeArrayBuffer (Arr
             Just w' -> Ref.write (o' + w') nextORef
         withOffset <- Ref.read nextORef
         pure (Just (withOffset - o))
-instance decodeArrayBufferArray :: DecodeArrayBuffer a => DecodeArrayBuffer (Array a) where
+instance decodeArrayBufferArray :: (DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (Array a) where
   readArrayBuffer b o = do
     mL <- readArrayBuffer b o
     case mL of
@@ -550,11 +550,11 @@ instance decodeArrayBufferArray :: DecodeArrayBuffer a => DecodeArrayBuffer (Arr
               pure x
 instance encodeArrayBufferList :: EncodeArrayBuffer a => EncodeArrayBuffer (List a) where
   putArrayBuffer b o xs = putArrayBuffer b o (Array.fromFoldable xs)
-instance decodeArrayBufferList :: DecodeArrayBuffer a => DecodeArrayBuffer (List a) where
+instance decodeArrayBufferList :: (DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (List a) where
   readArrayBuffer b o = (map Array.toUnfoldable) <$> readArrayBuffer b o
 instance encodeArrayBufferNonEmptyArray :: EncodeArrayBuffer a => EncodeArrayBuffer (NonEmpty Array a) where
   putArrayBuffer b o (NonEmpty x xs) = putArrayBuffer b o (Array.cons x xs)
-instance decodeArrayBufferNonEmptyArray :: DecodeArrayBuffer a => DecodeArrayBuffer (NonEmpty Array a) where
+instance decodeArrayBufferNonEmptyArray :: (DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (NonEmpty Array a) where
   readArrayBuffer b o = do
     mXs <- readArrayBuffer b o
     case mXs of
@@ -564,7 +564,7 @@ instance decodeArrayBufferNonEmptyArray :: DecodeArrayBuffer a => DecodeArrayBuf
         Just {head,tail} -> pure (Just (NonEmpty head tail))
 instance encodeArrayBufferNonEmptyList :: EncodeArrayBuffer a => EncodeArrayBuffer (NonEmpty List a) where
   putArrayBuffer b o (NonEmpty x xs) = putArrayBuffer b o (Cons x xs)
-instance decodeArrayBufferNonEmptyList :: DecodeArrayBuffer a => DecodeArrayBuffer (NonEmpty List a) where
+instance decodeArrayBufferNonEmptyList :: (DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (NonEmpty List a) where
   readArrayBuffer b o = do
     mXs <- readArrayBuffer b o
     case mXs of
@@ -577,24 +577,45 @@ instance decodeArrayBufferNonEmptyList :: DecodeArrayBuffer a => DecodeArrayBuff
 
 instance encodeArrayBufferObject :: EncodeArrayBuffer a => EncodeArrayBuffer (O.Object a) where
   putArrayBuffer b o xs = putArrayBuffer b o (O.toAscUnfoldable xs :: Array (Tuple String a))
-instance decodeArrayBufferObject :: DecodeArrayBuffer a => DecodeArrayBuffer (O.Object a) where
+instance decodeArrayBufferObject :: (DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (O.Object a) where
   readArrayBuffer b o = (map (O.fromFoldable :: Array (Tuple String a) -> O.Object a)) <$> readArrayBuffer b o
 instance encodeArrayBufferSet :: EncodeArrayBuffer a => EncodeArrayBuffer (Set.Set a) where
   putArrayBuffer b o xs = putArrayBuffer b o (Set.toUnfoldable xs :: Array a)
-instance decodeArrayBufferSet :: (Ord a, DecodeArrayBuffer a) => DecodeArrayBuffer (Set.Set a) where
+instance decodeArrayBufferSet :: (Ord a, DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (Set.Set a) where
   readArrayBuffer b o = (map (Set.fromFoldable :: Array a -> Set.Set a)) <$> readArrayBuffer b o
 instance encodeArrayBufferMap :: (EncodeArrayBuffer a, EncodeArrayBuffer k) => EncodeArrayBuffer (Map.Map k a) where
   putArrayBuffer b o xs = putArrayBuffer b o (Map.toUnfoldable xs :: Array (Tuple k a))
-instance decodeArrayBufferMap :: (Ord k, DecodeArrayBuffer k, DecodeArrayBuffer a) => DecodeArrayBuffer (Map.Map k a) where
+instance decodeArrayBufferMap :: (Ord k, DecodeArrayBuffer k, DecodeArrayBuffer a, DynamicByteLength k, DynamicByteLength a) => DecodeArrayBuffer (Map.Map k a) where
   readArrayBuffer b o = (map (Map.fromFoldable :: Array (Tuple k a) -> Map.Map k a)) <$> readArrayBuffer b o
 instance encodeArrayBufferHashSet :: EncodeArrayBuffer a => EncodeArrayBuffer (HS.HashSet a) where
   putArrayBuffer b o xs = putArrayBuffer b o (HS.toArray xs)
-instance decodeArrayBufferHashSet :: (Hashable a, DecodeArrayBuffer a) => DecodeArrayBuffer (HS.HashSet a) where
+instance decodeArrayBufferHashSet :: (Hashable a, DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (HS.HashSet a) where
   readArrayBuffer b o = (map (HS.fromFoldable :: Array a -> HS.HashSet a)) <$> readArrayBuffer b o
 instance encodeArrayBufferHashMap :: (EncodeArrayBuffer k, EncodeArrayBuffer a) => EncodeArrayBuffer (HM.HashMap k a) where
   putArrayBuffer b o xs = putArrayBuffer b o (HM.toArrayBy Tuple xs)
-instance decodeArrayBufferHashMap :: (Hashable k, DecodeArrayBuffer k, DecodeArrayBuffer a) => DecodeArrayBuffer (HM.HashMap k a) where
+instance decodeArrayBufferHashMap :: (Hashable k, DecodeArrayBuffer k, DecodeArrayBuffer a, DynamicByteLength k, DynamicByteLength a) => DecodeArrayBuffer (HM.HashMap k a) where
   readArrayBuffer b o = (map HM.fromArray) <$> readArrayBuffer b o
+
+
+-- Records
+
+instance encodeArrayBufferRecord ::
+  ( GEncodeArrayBuffer row list
+  , RL.RowToList row list
+  ) => EncodeArrayBuffer (Record row) where
+  putArrayBuffer b o xs = gPutArrayBuffer xs (RLProxy :: RLProxy list) >>= putArrayBuffer b o
+
+instance decodeArrayBufferRecord ::
+  ( GDecodeArrayBuffer row list
+  , RL.RowToList row list
+  ) => DecodeArrayBuffer (Record row) where
+  readArrayBuffer b o = do
+    mObject <- readArrayBuffer b o
+    case mObject of
+      Nothing -> pure Nothing
+      Just object -> Just <$> gReadArrayBuffer object (RLProxy :: RLProxy list)
+
+
 
 -- ArrayBuffers
 
@@ -637,7 +658,6 @@ instance decodeArrayBufferArrayView :: TA.TypedArray a t => DecodeArrayBuffer (A
 
 
 
--- TODO ArrayBuffer, DataView, ArrayView
 -- TODO RowToList for Rows
 -- TODO generics
 -- TODO Vec? Sized in advance?
@@ -645,7 +665,7 @@ instance decodeArrayBufferArrayView :: TA.TypedArray a t => DecodeArrayBuffer (A
 
 -- | Generate a new `ArrayBuffer` from a value. Throws an `Error` if writing fails, or if the written bytes
 -- | do not equal the dynamic `byteLength` of the value.
-encodeArrayBuffer :: forall a. EncodeArrayBuffer a => a -> Effect ArrayBuffer
+encodeArrayBuffer :: forall a. EncodeArrayBuffer a => DynamicByteLength a => a -> Effect ArrayBuffer
 encodeArrayBuffer x = do
   l <- byteLength x
   b <- AB.empty l
@@ -670,6 +690,7 @@ instance gEncodeArrayBufferNil :: GEncodeArrayBuffer row RL.Nil where
 
 instance gEncodeArrayBufferCons ::
   ( EncodeArrayBuffer value
+  , DynamicByteLength value
   , GEncodeArrayBuffer row tail
   , IsSymbol field
   , Cons field value tail' row
