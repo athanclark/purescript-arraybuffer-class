@@ -10,7 +10,7 @@ import Data.ArrayBuffer.Types (Uint8)
 import Prelude
 import Data.Maybe (Maybe (..))
 import Data.Tuple (Tuple)
-import Data.Either (Either)
+import Data.Either (Either (..))
 import Data.List (List)
 import Data.NonEmpty (NonEmpty)
 import Data.Set (Set, fromFoldable) as Set
@@ -20,8 +20,10 @@ import Data.HashMap (HashMap, fromArray) as HM
 import Data.UInt (UInt)
 import Foreign.Object (Object, fromFoldable) as O
 import Effect (Effect)
-import Effect.Console (log)
+import Effect.Console (log, warn)
 import Effect.Unsafe (unsafePerformEffect)
+import Effect.Exception (try)
+import Unsafe.Coerce (unsafeCoerce)
 import Test.QuickCheck
   (Result (Failed), (===), quickCheckGen, quickCheckGen', quickCheck, quickCheck', arbitrary)
 import Test.QuickCheck.Gen (Gen, arrayOf)
@@ -142,8 +144,14 @@ arrayBufferIso :: forall a
                => DynamicByteLength a
                => a -> Result
 arrayBufferIso x = unsafePerformEffect do
-  b <- encodeArrayBuffer x
-  mY <- decodeArrayBuffer b
-  case mY of
-    Nothing -> pure (Failed "Nothing")
-    Just y -> pure (x === y)
+  eX <- try do
+    b <- encodeArrayBuffer x
+    mY <- decodeArrayBuffer b
+    case mY of
+      Nothing -> pure (Failed "Nothing")
+      Just y -> pure (x === y)
+  case eX of
+    Left e -> do
+      warn (unsafeCoerce x)
+      pure (Failed (show e))
+    Right x -> pure x

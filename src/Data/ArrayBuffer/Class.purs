@@ -22,7 +22,7 @@ import Data.ArrayBuffer.Typed.Unsafe (AV (..))
 import Prelude
   ( Unit, Ordering (..), class Ord
   , (<$>), (<*>), (>>=), (<<<), (<=), (<>), (+), (-), (/=), (==), (<)
-  , pure, otherwise, show, unit, bind, map, discard)
+  , pure, otherwise, show, unit, bind, map, discard, void)
 import Data.Maybe (Maybe (..))
 import Data.Either (Either (..))
 import Data.Tuple (Tuple (..))
@@ -633,9 +633,11 @@ instance encodeArrayBufferArrayBuffer :: EncodeArrayBuffer ArrayBuffer where
         let target = DV.whole b
         offsetRef <- Ref.new (o + w)
         let go x = do
-              o' <- Ref.modify (_ + 1) offsetRef
+              o' <- Ref.read offsetRef
               s <- DV.setUint8 target o' x
-              if s then pure unit else throw ("Not enough room for the ArrayBuffer in the target: " <> show o')
+              if s
+                then void (Ref.write (o' + 1) offsetRef)
+                else throw ("Not enough room for the ArrayBuffer in the target: " <> show o')
         TA.traverse_ go ta
         Just <$> Ref.read offsetRef
 instance decodeArrayBufferArrayBuffer :: DecodeArrayBuffer ArrayBuffer where
