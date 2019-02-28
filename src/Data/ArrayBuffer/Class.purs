@@ -17,6 +17,7 @@ import Data.ArrayBuffer.Types
 import Data.ArrayBuffer.ArrayBuffer (empty, byteLength, slice) as AB
 import Data.ArrayBuffer.DataView as DV
 import Data.ArrayBuffer.Typed (buffer, whole, traverse_, class TypedArray) as TA
+import Data.ArrayBuffer.Typed.Unsafe (AV (..))
 
 import Prelude
   ( Unit, Ordering (..), class Ord
@@ -158,6 +159,8 @@ instance dynamicByteLengthDataView :: DynamicByteLength DataView where
   byteLength xs = byteLength (DV.buffer xs)
 instance dynamicByteLengthArrayView :: DynamicByteLength (ArrayView a) where
   byteLength xs = byteLength (TA.buffer xs)
+instance dynamicByteLengthAV :: DynamicByteLength (AV a t) where
+  byteLength (AV xs) = byteLength xs
 instance dynamicByteLengthRecord :: GEncodeArrayBuffer row list => DynamicByteLength (Record row) where
   byteLength xs = gPutArrayBuffer xs (RLProxy :: RLProxy list) >>= byteLength
 
@@ -655,6 +658,10 @@ instance decodeArrayBufferArrayView :: TA.TypedArray a t => DecodeArrayBuffer (A
     case mX of
       Nothing -> pure Nothing
       Just x -> Just <$> TA.whole x
+instance encodeArrayBufferAV :: EncodeArrayBuffer (AV a t) where
+  putArrayBuffer b o (AV xs) = putArrayBuffer b o xs
+instance decodeArrayBufferAV :: TA.TypedArray a t => DecodeArrayBuffer (AV a t) where
+  readArrayBuffer b o = (map AV) <$> readArrayBuffer b o
 
 
 

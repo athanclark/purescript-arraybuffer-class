@@ -3,6 +3,9 @@ module Test.Main where
 import Data.ArrayBuffer.Class
 import Data.ArrayBuffer.Typed.Gen
   (genUint8, genUint16, genUint32, genInt8, genInt16, genInt32, genFloat32, genFloat64)
+import Data.ArrayBuffer.Typed (fromArray, buffer) as TA
+import Data.ArrayBuffer.Typed.Unsafe (AV (..))
+import Data.ArrayBuffer.Types (Uint8)
 
 import Prelude
 import Data.Maybe (Maybe (..))
@@ -14,13 +17,14 @@ import Data.Set (Set, fromFoldable) as Set
 import Data.Map (Map, fromFoldable) as Map
 import Data.HashSet (HashSet, fromFoldable) as HS
 import Data.HashMap (HashMap, fromArray) as HM
+import Data.UInt (UInt)
 import Foreign.Object (Object, fromFoldable) as O
 import Effect (Effect)
 import Effect.Console (log)
 import Effect.Unsafe (unsafePerformEffect)
 import Test.QuickCheck
   (Result (Failed), (===), quickCheckGen, quickCheckGen', quickCheck, quickCheck', arbitrary)
-import Test.QuickCheck.Gen (Gen)
+import Test.QuickCheck.Gen (Gen, arrayOf)
 
 
 
@@ -93,6 +97,9 @@ main = do
   log "  HashMap"
   quickCheckGen' 1000 (arrayBufferIso <$> genHashMap)
 
+  log "  ArrayBuffer"
+  quickCheckGen' 1000 (arrayBufferIso <$> genArrayBuffer)
+
 
 
 genObject :: Gen (O.Object String)
@@ -121,7 +128,19 @@ genHashMap = do
   pure (HM.fromArray xs)
 
 
-arrayBufferIso :: forall a. Show a => Eq a => EncodeArrayBuffer a => DecodeArrayBuffer a => a -> Result
+genArrayBuffer :: Gen (AV Uint8 UInt)
+genArrayBuffer = do
+  xs <- arrayOf genUint8
+  pure (unsafePerformEffect (AV <$> TA.fromArray xs))
+
+
+arrayBufferIso :: forall a
+                . Show a
+               => Eq a
+               => EncodeArrayBuffer a
+               => DecodeArrayBuffer a
+               => DynamicByteLength a
+               => a -> Result
 arrayBufferIso x = unsafePerformEffect do
   b <- encodeArrayBuffer x
   mY <- decodeArrayBuffer b
