@@ -14,7 +14,7 @@
   "dependencies": {
     "purescript-prelude": "^4.1.1",
     "purescript-effect": "^2.0.1",
-    "purescript-arraybuffer": "git://github.com/athanclark/purescript-arraybuffer.git#b26e575c438dae5b241f94d2b60dad609443db80",
+    "purescript-arraybuffer": "git://github.com/athanclark/purescript-arraybuffer.git#9682a2519675296005a906db1da3857b4f93576f",
     "purescript-exceptions": "^4.0.0",
     "purescript-strings": "^4.0.1",
     "purescript-foreign-object": "^2.0.2",
