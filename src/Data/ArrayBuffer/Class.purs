@@ -699,7 +699,7 @@ instance decodeArrayBufferRecord ::
 
 instance encodeArrayBufferArrayBuffer :: EncodeArrayBuffer ArrayBuffer where
   putArrayBuffer b o xs = do
-    l <- byteLength xs
+    let l = AB.byteLength xs
     mW <- putArrayBuffer b o (Uint32BE (UInt.fromNumber (unsafeCoerce l)))
     case mW of
       Nothing -> pure Nothing
@@ -714,7 +714,7 @@ instance encodeArrayBufferArrayBuffer :: EncodeArrayBuffer ArrayBuffer where
                 then void (Ref.write (o' + 1) offsetRef)
                 else throw ("Not enough room for the ArrayBuffer in the target: " <> show o')
         TA.traverse_ go ta
-        Just <$> Ref.read offsetRef
+        (\o' -> Just (o' - o)) <$> Ref.read offsetRef
 instance decodeArrayBufferArrayBuffer :: DecodeArrayBuffer ArrayBuffer where
   readArrayBuffer b o = do
     mL <- readArrayBuffer b o
