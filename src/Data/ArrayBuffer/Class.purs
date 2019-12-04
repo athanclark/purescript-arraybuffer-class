@@ -44,7 +44,7 @@ import Data.Hashable (class Hashable)
 import Data.HashSet (HashSet, fromFoldable, toArray) as HS
 import Data.HashMap (HashMap, toArrayBy, fromArray) as HM
 import Data.Array (fromFoldable, toUnfoldable, cons, uncons) as Array
--- import Data.Vec (Vec, fromArray) as Vec
+import Data.Vec (Vec, fromArray) as Vec
 import Data.Enum (toEnum, fromEnum)
 import Data.Traversable (for_, traverse)
 import Data.Foldable (sum, length)
@@ -61,8 +61,8 @@ import Prim.Row (class Cons, class Lacks)
 import Prim.RowList (kind RowList, Cons, Nil, class RowToList) as RL
 import Record (insert, get) as Record
 import Type.Data.RowList (RLProxy (..))
--- import Type.Proxy (Proxy (..))
--- import Data.Typelevel.Num (class Nat, toInt')
+import Type.Proxy (Proxy (..))
+import Data.Typelevel.Num (class Nat, toInt')
 import Effect (Effect)
 import Effect.Exception (throw)
 import Effect.Ref (new, read, write) as Ref
@@ -599,33 +599,33 @@ instance decodeArrayBufferArray :: (DecodeArrayBuffer a, DynamicByteLength a) =>
               l' <- byteLength x
               Ref.write (o' + l') nextORef
               pure x
--- instance encodeArrayBufferVec :: (Nat s, EncodeArrayBuffer a) => EncodeArrayBuffer (Vec.Vec s a) where
---   putArrayBuffer b o xs = do
---     nextORef <- Ref.new o
---     for_ xs \x -> do
---       o' <- Ref.read nextORef
---       mW' <- putArrayBuffer b o' x
---       case mW' of
---         Nothing -> throw ("Incorrect ArrayBuffer length - wrote vec's possible bytes: " <> show o')
---         Just w' -> Ref.write (o' + w') nextORef
---     withOffset <- Ref.read nextORef
---     pure (Just (withOffset - o))
--- instance decodeArrayBufferVec :: (Nat s, DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (Vec.Vec s a) where
---   readArrayBuffer b o = do
---     let l = toInt' (Proxy :: Proxy s)
---     nextORef <- Ref.new o
---     xs <- replicateA l do
---       o' <- Ref.read nextORef
---       mX <- readArrayBuffer b o'
---       case mX of
---         Nothing -> throw ("Incorrect ArrayBuffer encoding - retreived length, but not all values: " <> show o')
---         Just x -> do
---           l' <- byteLength x
---           Ref.write (o' + l') nextORef
---           pure x
---     case Vec.fromArray xs of
---       Nothing -> throw ("Couldn't caste ArrayBuffer parsed array into a vec")
---       Just xs' -> pure (Just xs')
+instance encodeArrayBufferVec :: (Nat s, EncodeArrayBuffer a) => EncodeArrayBuffer (Vec.Vec s a) where
+  putArrayBuffer b o xs = do
+    nextORef <- Ref.new o
+    for_ xs \x -> do
+      o' <- Ref.read nextORef
+      mW' <- putArrayBuffer b o' x
+      case mW' of
+        Nothing -> throw ("Incorrect ArrayBuffer length - wrote vec's possible bytes: " <> show o')
+        Just w' -> Ref.write (o' + w') nextORef
+    withOffset <- Ref.read nextORef
+    pure (Just (withOffset - o))
+instance decodeArrayBufferVec :: (Nat s, DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (Vec.Vec s a) where
+  readArrayBuffer b o = do
+    let l = toInt' (Proxy :: Proxy s)
+    nextORef <- Ref.new o
+    xs <- replicateA l do
+      o' <- Ref.read nextORef
+      mX <- readArrayBuffer b o'
+      case mX of
+        Nothing -> throw ("Incorrect ArrayBuffer encoding - retreived length, but not all values: " <> show o')
+        Just x -> do
+          l' <- byteLength x
+          Ref.write (o' + l') nextORef
+          pure x
+    case Vec.fromArray xs of
+      Nothing -> throw ("Couldn't caste ArrayBuffer parsed array into a vec")
+      Just xs' -> pure (Just xs')
 instance encodeArrayBufferList :: EncodeArrayBuffer a => EncodeArrayBuffer (List a) where
   putArrayBuffer b o xs = putArrayBuffer b o (Array.fromFoldable xs)
 instance decodeArrayBufferList :: (DecodeArrayBuffer a, DynamicByteLength a) => DecodeArrayBuffer (List a) where
