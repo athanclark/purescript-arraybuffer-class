@@ -20,7 +20,7 @@
     "purescript-foreign-object": "^2.0.2",
     "purescript-ordered-collections": "^1.6.1",
     "purescript-unordered-collections": "^1.8.0",
-    "purescript-sized-vectors": "^4.0.0"
+    "purescript-sized-vectors": "^5.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",
