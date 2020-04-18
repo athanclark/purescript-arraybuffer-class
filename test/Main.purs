@@ -1,13 +1,17 @@
 module Test.Main where
 
 import Data.ArrayBuffer.Class
+  ( class DecodeArrayBuffer, class DynamicByteLength, class EncodeArrayBuffer, Float32BE(..)
+  , Float32LE(..), Float64BE(..), Float64LE(..), Int16BE(..), Int16LE(..), Int32BE(..)
+  , Int32LE(..), Int8(..), Uint16BE(..), Uint16LE(..), Uint32BE(..), Uint32LE(..), Uint8 (..)
+  , decodeArrayBuffer, encodeArrayBuffer)
 import Data.ArrayBuffer.Typed.Gen
   (genUint8, genUint16, genUint32, genInt8, genInt16, genInt32, genFloat32, genFloat64)
-import Data.ArrayBuffer.Typed (fromArray, buffer) as TA
+import Data.ArrayBuffer.Typed (fromArray) as TA
 import Data.ArrayBuffer.Typed.Unsafe (AV (..))
-import Data.ArrayBuffer.Types (Uint8)
+import Data.ArrayBuffer.Types (Uint8) as Types
 
-import Prelude
+import Prelude (class Eq, class Show, Ordering, Unit, bind, discard, pure, show, (<$>), (<<<))
 import Data.Maybe (Maybe (..))
 import Data.Tuple (Tuple)
 import Data.Either (Either (..))
@@ -130,7 +134,7 @@ genHashMap = do
   pure (HM.fromArray xs)
 
 
-genArrayBuffer :: Gen (AV Uint8 UInt)
+genArrayBuffer :: Gen (AV Types.Uint8 UInt)
 genArrayBuffer = do
   xs <- arrayOf genUint8
   pure (unsafePerformEffect (AV <$> TA.fromArray xs))
@@ -154,4 +158,4 @@ arrayBufferIso x = unsafePerformEffect do
     Left e -> do
       warn (unsafeCoerce x)
       pure (Failed (show e))
-    Right x -> pure x
+    Right y -> pure y
