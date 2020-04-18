@@ -1,0 +1,19 @@
+{
+  "name": "arraybuffer-class",
+  "set": "psc-0.13.6-20200404",
+  "source": "https://github.com/purescript/package-sets.git",
+  "depends": [
+    "arraybuffer",
+    "console",
+    "effect",
+    "exceptions",
+    "foreign-object",
+    "ordered-collections",
+    "prelude",
+    "psci-support",
+    "quickcheck",
+    "sized-vectors",
+    "strings",
+    "unordered-collections"
+  ]
+}
