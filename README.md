@@ -1,6 +1,7 @@
 # purescript-arraybuffer-class
 
 [![Build Status](https://travis-ci.org/athanclark/purescript-arraybuffer-class.svg?branch=master)](https://travis-ci.org/athanclark/purescript-arraybuffer-class)
+[![Pursuit](https://pursuit.purescript.org/packages/purescript-arraybuffer-class/badge)](https://pursuit.purescript.org/packages/purescript-arraybuffer-class)
 
 Typeclasses for binary serialization in PureScript.
 
