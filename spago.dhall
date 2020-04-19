@@ -11,13 +11,12 @@ You can edit this file as you like.
   , "foreign-object"
   , "ordered-collections"
   , "prelude"
-  , "psci-support"
-  , "quickcheck"
   , "sized-vectors"
   , "strings"
   , "unordered-collections"
   ]
 , packages = ./packages.dhall
-, sources = [ "src/**/*.purs", "test/**/*.purs" ]
+, sources = [ "src/**/*.purs" ]
 , license = "BSD-3-Clause"
+, repository = "https://github.com/athanclark/purescript-arraybuffer-class.git"
 }
