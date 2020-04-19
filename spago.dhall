@@ -5,12 +5,9 @@ You can edit this file as you like.
 { name = "arraybuffer-class"
 , dependencies =
   [ "arraybuffer"
-  , "console"
-  , "effect"
   , "exceptions"
   , "foreign-object"
   , "ordered-collections"
-  , "prelude"
   , "sized-vectors"
   , "strings"
   , "unordered-collections"
