@@ -12,8 +12,6 @@
     "url": "https://github.com/athanclark/purescript-arraybuffer-class.git"
   },
   "dependencies": {
-    "purescript-prelude": "^4.1.1",
-    "purescript-effect": "^2.0.1",
     "purescript-arraybuffer": "^10.0.2",
     "purescript-exceptions": "^4.0.0",
     "purescript-strings": "^4.0.1",
