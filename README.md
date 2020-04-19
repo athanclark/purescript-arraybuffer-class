@@ -1,5 +1,7 @@
 # purescript-arraybuffer-class
 
+[![Build Status](https://travis-ci.org/athanclark/purescript-arraybuffer-class.svg?branch=master)](https://travis-ci.org/athanclark/purescript-arraybuffer-class)
+
 Typeclasses for binary serialization in PureScript.
 
 > Note: Although this library shares a lot of features similar to the [cereal library from Haskell](https://hackage.haskell.org/package/cereal), it is not yet compatible.
