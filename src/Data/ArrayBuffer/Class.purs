@@ -138,8 +138,8 @@ instance dynamicByteLengthEither :: (DynamicByteLength a, DynamicByteLength b) =
     Right y -> byteLength y
 instance dynamicByteLengthArray :: DynamicByteLength a => DynamicByteLength (Array a) where
   byteLength xs = (\ys -> sum ys + 4) <$> traverse byteLength xs
--- instance dynamicByteLengthVec :: (Nat s, DynamicByteLength a) => DynamicByteLength (Vec.Vec s a) where
---   byteLength xs = sum <$> traverse byteLength xs
+instance dynamicByteLengthVec :: (Nat s, DynamicByteLength a) => DynamicByteLength (Vec.Vec s a) where
+  byteLength xs = sum <$> traverse byteLength xs
 instance dynamicByteLengthList :: DynamicByteLength a => DynamicByteLength (List a) where
   byteLength xs = byteLength (Array.fromFoldable xs)
 instance dynamicByteLengthNonEmptyArray :: DynamicByteLength a => DynamicByteLength (NonEmpty Array a) where
