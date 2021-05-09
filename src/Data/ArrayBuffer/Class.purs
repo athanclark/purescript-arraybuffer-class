@@ -802,7 +802,7 @@ decodeArrayBuffer b = readArrayBuffer b 0
 
 
 
-class GEncodeArrayBuffer (row :: # Type) (list :: RL.RowList) where
+class GEncodeArrayBuffer (row :: Row Type) (list :: RL.RowList Type) where
   gPutArrayBuffer :: Record row -> RLProxy list -> Effect (O.Object ArrayBuffer)
 
 instance gEncodeArrayBufferNil :: GEncodeArrayBuffer row RL.Nil where
@@ -824,7 +824,7 @@ instance gEncodeArrayBufferCons ::
     rest <- gPutArrayBuffer row (RLProxy :: RLProxy tail)
     pure (O.insert (reflectSymbol sProxy) x rest)
 
-class GDecodeArrayBuffer (row :: # Type) (list :: RL.RowList) | list -> row where
+class GDecodeArrayBuffer (row :: Row Type) (list :: RL.RowList Type) | list -> row where
   gReadArrayBuffer :: O.Object ArrayBuffer -> RLProxy list -> Effect (Record row)
 
 instance gDecodeArrayBufferNil :: GDecodeArrayBuffer () RL.Nil where
